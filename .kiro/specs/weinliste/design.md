@@ -572,6 +572,33 @@ def phase_deploy(config: Config) -> None:
 ```
 
 Deploy-Logik:
+- **Build-Wurzel**: Nicht `frontend/dist` als Wurzel nehmen, sondern das
+  tatsächliche Browser-Build-Verzeichnis auflösen (`_resolve_dist_dir`). Der
+  Builder `@angular/build:application` schreibt nach
+  `frontend/dist/<projekt>/browser/`; diese Funktion liefert den `browser`-
+  Unterordner, sodass `index.html`/`assets/` direkt unter `remote_path` landen
+  (Req 6.14). Ein klassischer flacher `dist`-Ordner (mit `index.html` direkt in
+  `frontend/dist`) wird unverändert verwendet; Fallback bleibt `frontend/dist`.
+  Identisch für SFTP und FTP.
+- **Pre-Deploy-Backup (serverseitig)**: Zu Beginn der PhaseDeploy — nach
+  Passwort-Auflösung und Verbindungsaufbau, aber VOR dem Prune — wird der
+  aktuelle Inhalt von `remote_path` serverseitig in
+  `<backup.remote_backup_dir>/predeploy-<YYYYmmdd-HHMMSS>/` kopiert
+  (`_predeploy_remote_backup_sftp`). Die Kopie läuft server-zu-server per
+  SSH-`exec_command` (`cp -a`) über denselben paramiko-Transport — kein lokaler
+  Download, keine Ablage im lokalen `backup_dir` (Req 6.15). Schlägt das Backup
+  fehl (Kopierfehler oder fehlendes `remote_backup_dir`), bricht der Deploy mit
+  exit 1 ab, BEVOR geprunt wird — es wird nie ohne Backup gelöscht (Req 6.16).
+  Dieses Deployment-Backup ist getrennt vom lokalen Import-Backup-Mechanismus
+  (`_remote_backup`/`phase_backup`).
+- **Retention Pre-Deploy-Backup**: Nach dem Anlegen werden die ältesten
+  `predeploy-`Ordner serverseitig entfernt, sodass maximal
+  `MAX_PREDEPLOY_BACKUPS` (Standard 5) erhalten bleiben — unabhängig von
+  `max_last_backups`/`max_archival_backups` (Req 6.17).
+- **FTP-Einschränkung**: Plain FTP kennt weder Shell noch portablen
+  serverseitigen rekursiven Copy. `_predeploy_remote_backup_ftp` bricht daher
+  vor dem Prune mit exit 1 ab; serverseitige Pre-Deploy-Backups erfordern SFTP
+  (Req 6.18).
 - Angular-dist-Ordner: veraltete Serverdateien löschen (via SFTP `listdir` / FTP `NLST`)
 - `wines.json` und Bilder aus `image_export_dir`: **niemals** auf dem Server löschen
 - Timestamp-Vergleich: SFTP via `stat().st_mtime`, FTP via `MDTM`

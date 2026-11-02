@@ -713,6 +713,146 @@ def phase_deploy(config: Config) -> None:
         sys.exit(1)
 
 
+# Anzahl serverseitiger Pre-Deploy-Backups, die unter remote_backup_dir
+# aufbewahrt werden. Dieses Deployment-Backup ist getrennt vom lokalen
+# Import-Backup-Mechanismus (max_last_backups/max_archival_backups) und hat
+# bewusst ein eigenes, kleines Rolling-Window.
+MAX_PREDEPLOY_BACKUPS = 5
+
+
+def _resolve_dist_dir(base: Path = Path("frontend/dist")) -> Path:
+    """Tatsächliches Angular-Build-Output-Verzeichnis als Deploy-Wurzel ermitteln.
+
+    Der Builder ``@angular/build:application`` schreibt den auszuliefernden
+    Browser-Build nach ``frontend/dist/<projekt>/browser/`` (verschachtelt),
+    während ältere/flache Angular-Setups direkt nach ``frontend/dist/`` bauen.
+    Diese Funktion löst robust den Ordner auf, dessen Inhalt (``index.html``,
+    ``assets/`` usw.) direkt in ``remote_path`` landen soll (Req 6.7):
+
+    1. Enthält ``base`` selbst eine ``index.html`` -> flacher dist-Ordner.
+    2. Sonst: genau ein ``<projekt>/browser/``-Unterordner mit ``index.html``.
+    3. Fallback: ``base`` unverändert (robust gegen leicht andere Defaults).
+    """
+    if not base.exists():
+        return base
+    if (base / "index.html").exists():
+        return base
+    # Kandidaten: <base>/<projekt>/browser mit index.html
+    browser_candidates = [
+        p for p in base.glob("*/browser") if (p / "index.html").exists()
+    ]
+    if len(browser_candidates) == 1:
+        return browser_candidates[0]
+    # Fallback: irgendein Unterordner mit index.html (z. B. <base>/<projekt>)
+    nested = [p for p in base.glob("*") if p.is_dir() and (p / "index.html").exists()]
+    if len(nested) == 1:
+        return nested[0]
+    return base
+
+
+def _predeploy_remote_backup_sftp(transport, config: Config, remote_base: str) -> None:
+    """Serverseitiges Pre-Deploy-Backup von remote_path anlegen (vor dem Prune).
+
+    Kopiert den aktuellen Zustand von ``remote_path`` serverseitig in einen
+    zeitgestempelten Unterordner ``<remote_backup_dir>/predeploy-<ts>/`` – die
+    Daten werden NICHT durch den lokalen Rechner geschleust. Umgesetzt per
+    SSH-``exec_command`` (``cp -a``) über denselben paramiko-Transport.
+
+    Schlägt das Backup grundsätzlich fehl, wird eine Exception geworfen, damit
+    der Deploy NICHT weiterläuft und prunt – lieber sauber scheitern, bevor auf
+    dem Server gelöscht wird.
+
+    Hinweis: Ein reiner SFTP-Pfad hätte keinen rekursiven Server-zu-Server-Copy;
+    daher wird bewusst eine Shell (``exec_command``) genutzt.
+    """
+    backup_root = (config.backup.remote_backup_dir if config.backup else None)
+    if not backup_root:
+        # Ohne Backup-Zielordner kann kein Pre-Deploy-Backup erstellt werden.
+        # Das ist ein harter Fehler: ohne Backup darf nicht geprunt werden.
+        raise RuntimeError(
+            "Pre-Deploy-Backup nicht möglich: backup.remote_backup_dir ist nicht "
+            "konfiguriert. Deploy abgebrochen, bevor serverseitig gelöscht wird."
+        )
+    backup_root = backup_root.rstrip("/")
+    base = remote_base.rstrip("/")
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    target = f"{backup_root}/predeploy-{timestamp}"
+
+    # Kommandos serverseitig über eine SSH-Session des Transports ausführen und
+    # jeweils den Exit-Status prüfen; ungleich 0 -> Backup fehlgeschlagen.
+    def _run(cmd: str) -> None:
+        rc, err = _transport_exec(transport, cmd)
+        if rc != 0:
+            raise RuntimeError(f"Befehl fehlgeschlagen (rc={rc}): {cmd}\n{err}")
+
+    # Zielordner anlegen und Inhalt von remote_base rekursiv hineinkopieren.
+    # Das Trailing '/.' kopiert den Verzeichnisinhalt (auch dotfiles), nicht den
+    # Ordner selbst. Ist remote_base leer, bleibt der Backup-Ordner leer – das
+    # ist sauber behandelt und kein Fehler.
+    _run(f"mkdir -p {_shq(target)}")
+    _run(f"cp -a {_shq(base + '/.')} {_shq(target)}/ 2>/dev/null || true")
+
+    _prune_predeploy_backups_sftp(_run, backup_root)
+
+
+def _transport_exec(transport, cmd: str) -> tuple[int, str]:
+    """Ein Kommando serverseitig über eine paramiko-Transport-Session ausführen.
+
+    Rückgabe: (exit_status, stderr-Text). Gekapselt, damit Tests die
+    serverseitige Ausführung über ``transport.open_session`` leicht mocken
+    können (der Fake-SFTP-Client hat keine Shell).
+    """
+    channel = transport.open_session()
+    channel.exec_command(cmd)
+    err = channel.makefile_stderr("rb").read().decode(errors="replace").strip()
+    rc = channel.recv_exit_status()
+    return rc, err
+
+
+def _shq(path: str) -> str:
+    """Pfad fürs Shell-Kommando quoten (Schutz vor Sonderzeichen)."""
+    import shlex
+
+    return shlex.quote(path)
+
+
+def _prune_predeploy_backups_sftp(run, backup_root: str) -> None:
+    """Nur die neuesten MAX_PREDEPLOY_BACKUPS predeploy-Ordner behalten.
+
+    ``run`` ist die Kommando-Ausführungsfunktion aus dem Backup-Schritt; die
+    Löschung läuft serverseitig. Die predeploy-Ordner sind zeitstempel-benannt,
+    daher ergibt lexikografisches Sortieren die chronologische Reihenfolge.
+    """
+    backup_root = backup_root.rstrip("/")
+    # Älteste zuerst löschen, sodass genau MAX_PREDEPLOY_BACKUPS übrig bleiben.
+    # `ls -1d` listet die predeploy-Ordner; `sort` -> chronologisch; `head -n -N`
+    # alle außer den neuesten N; Löschung via xargs rm -rf.
+    keep = MAX_PREDEPLOY_BACKUPS
+    cmd = (
+        f"cd {_shq(backup_root)} && "
+        f"ls -1d predeploy-* 2>/dev/null | sort | head -n -{keep} | "
+        f"while read d; do rm -rf -- \"$d\"; done"
+    )
+    run(cmd)
+
+
+def _predeploy_remote_backup_ftp(ftp, config: Config, remote_base: str) -> None:
+    """Pre-Deploy-Backup über plain FTP – nicht ohne lokalen Download möglich.
+
+    FTP kennt weder eine Shell (``exec``) noch einen portablen serverseitigen
+    rekursiven Copy-Befehl. Ein serverseitiges Backup des Server-Zustands ist
+    damit über reines FTP nicht umsetzbar. Statt ohne Backup zu prunen (und so
+    ungeschützte Dateien unwiderruflich zu löschen), bricht der Deploy hier
+    bewusst ab (Req 6.15). Wer serverseitige Pre-Deploy-Backups braucht, nutzt
+    ``deploy.protocol = "sftp"``.
+    """
+    raise RuntimeError(
+        "Pre-Deploy-Backup über FTP nicht möglich: FTP bietet keinen "
+        "serverseitigen rekursiven Copy. Deploy abgebrochen, bevor geprunt "
+        "wird. Für serverseitige Pre-Deploy-Backups bitte SFTP verwenden."
+    )
+
+
 def _local_dist_files(dist_dir: Path) -> dict[str, Path]:
     """Relative Pfad -> lokale Datei für alle Dateien im dist-Ordner."""
     result: dict[str, Path] = {}
@@ -755,7 +895,9 @@ def _is_protected(rel: str, exact: set[str], prefixes: list[str]) -> bool:
 def _deploy_sftp(config: Config, password: str) -> None:
     transport, sftp = _sftp_connect(config.deploy.host, config.deploy.user, password)
     try:
-        dist_dir = Path("frontend/dist")
+        # Tatsächlichen Browser-Build-Ordner als Deploy-Wurzel verwenden, damit
+        # index.html/assets direkt unter remote_path landen (Req 6.7).
+        dist_dir = _resolve_dist_dir()
         local_files = _local_dist_files(dist_dir)
         remote_base = config.deploy.remote_path
 
@@ -766,6 +908,11 @@ def _deploy_sftp(config: Config, password: str) -> None:
             _sftp_makedirs(sftp, remote_file.rsplit("/", 1)[0])
             if not _sftp_up_to_date(sftp, remote_file, local_file):
                 _upload_sftp(sftp, local_file, remote_file)
+
+        # Pre-Deploy-Backup des aktuellen Server-Zustands VOR dem Prune.
+        # Schlägt es grundsätzlich fehl, propagiert die Exception und der Prune
+        # läuft NICHT – wir löschen nie ohne vorheriges Backup.
+        _predeploy_remote_backup_sftp(transport, config, remote_base)
 
         # dist-Ordner: veraltete Serverdateien löschen (wines.json/Bilder NIE)
         exact, prefixes = _protected_prefixes(config)
@@ -837,7 +984,8 @@ def _deploy_ftp(config: Config, password: str) -> None:
     ftp = ftplib.FTP(config.deploy.host)
     ftp.login(config.deploy.user, password)
     try:
-        dist_dir = Path("frontend/dist")
+        # Browser-Build-Ordner als Deploy-Wurzel (Req 6.7), identisch zu SFTP.
+        dist_dir = _resolve_dist_dir()
         local_files = _local_dist_files(dist_dir)
         remote_base = config.deploy.remote_path
 
@@ -847,6 +995,12 @@ def _deploy_ftp(config: Config, password: str) -> None:
             _ftp_makedirs(ftp, remote_file.rsplit("/", 1)[0])
             if not _ftp_up_to_date(ftp, remote_file, local_file):
                 _upload_ftp(ftp, local_file, remote_file)
+
+        # Pre-Deploy-Backup VOR dem Prune. Plain FTP bietet keinen
+        # serverseitigen rekursiven Copy und keine Shell; ein serverseitiges
+        # Backup ohne lokalen Download ist damit nicht möglich. Statt ohne
+        # Backup zu prunen, wird hier sauber abgebrochen (Req 6.15).
+        _predeploy_remote_backup_ftp(ftp, config, remote_base)
 
         exact, prefixes = _protected_prefixes(config)
         _ftp_prune(ftp, remote_base, set(local_files.keys()), exact, prefixes)
