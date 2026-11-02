@@ -4,6 +4,7 @@ import { provideRouter } from '@angular/router';
 import { App } from './app';
 import { WineDataService } from './services/wine-data.service';
 import { FilterService } from './services/filter.service';
+import { DialogService } from './services/dialog.service';
 import { LoadState, Wine } from './models/wine.model';
 import { WineSchemaField } from './models/wine-schema.model';
 
@@ -88,5 +89,137 @@ describe('App (Shell)', () => {
     const fs = TestBed.inject(FilterService);
     fixture.componentInstance.onKeydown(new KeyboardEvent('keydown', { key: 'l', metaKey: true }));
     expect(fs.viewMode()).toBe('grid');
+  });
+
+  describe('Pfeiltasten-Navigation im WineDetailDialog', () => {
+    const WINES: Wine[] = [
+      { name: 'A' } as Wine,
+      { name: 'B' } as Wine,
+      { name: 'C' } as Wine,
+    ];
+
+    function arrowSetup() {
+      const ctx = setup('loaded', WINES);
+      const dialog = TestBed.inject(DialogService);
+      const app = ctx.fixture.componentInstance;
+      return { ...ctx, dialog, app };
+    }
+
+    it('→ öffnet bei geschlossenem Dialog den ersten Wein', () => {
+      const { app, dialog } = arrowSetup();
+      expect(dialog.wine()).toBeNull();
+      app.onKeydown(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+      expect(dialog.wine()?.name).toBe('A');
+    });
+
+    it('← öffnet bei geschlossenem Dialog den letzten Wein', () => {
+      const { app, dialog } = arrowSetup();
+      app.onKeydown(new KeyboardEvent('keydown', { key: 'ArrowLeft' }));
+      expect(dialog.wine()?.name).toBe('C');
+    });
+
+    it('→ zeigt den nächsten Wein', () => {
+      const { app, dialog } = arrowSetup();
+      dialog.open(WINES[0]);
+      app.onKeydown(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+      expect(dialog.wine()?.name).toBe('B');
+      app.onKeydown(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+      expect(dialog.wine()?.name).toBe('C');
+    });
+
+    it('← zeigt den vorherigen Wein', () => {
+      const { app, dialog } = arrowSetup();
+      dialog.open(WINES[2]);
+      app.onKeydown(new KeyboardEvent('keydown', { key: 'ArrowLeft' }));
+      expect(dialog.wine()?.name).toBe('B');
+    });
+
+    it('→ wrappt vom letzten auf den ersten Wein', () => {
+      const { app, dialog } = arrowSetup();
+      dialog.open(WINES[2]);
+      app.onKeydown(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+      expect(dialog.wine()?.name).toBe('A');
+    });
+
+    it('← wrappt vom ersten auf den letzten Wein', () => {
+      const { app, dialog } = arrowSetup();
+      dialog.open(WINES[0]);
+      app.onKeydown(new KeyboardEvent('keydown', { key: 'ArrowLeft' }));
+      expect(dialog.wine()?.name).toBe('C');
+    });
+
+    it('passiert nichts bei leerer Liste', () => {
+      const ctx = setup('loaded', []);
+      const dialog = TestBed.inject(DialogService);
+      ctx.fixture.componentInstance.onKeydown(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+      expect(dialog.wine()).toBeNull();
+    });
+
+    it('ignoriert Pfeiltasten in Eingabefeldern', () => {
+      const { app, dialog } = arrowSetup();
+      const input = document.createElement('input');
+      const ev = new KeyboardEvent('keydown', { key: 'ArrowRight' });
+      Object.defineProperty(ev, 'target', { value: input });
+      app.onKeydown(ev);
+      expect(dialog.wine()).toBeNull();
+    });
+
+    it('ignoriert Pfeiltasten mit Modifier', () => {
+      const { app, dialog } = arrowSetup();
+      app.onKeydown(new KeyboardEvent('keydown', { key: 'ArrowRight', ctrlKey: true }));
+      expect(dialog.wine()).toBeNull();
+    });
+
+    it('blockiert i/l bei offenem Dialog, während ←/→ navigieren', () => {
+      const { app, dialog } = arrowSetup();
+      const fs = TestBed.inject(FilterService);
+      dialog.open(WINES[0]);
+
+      // i und l bleiben bei offenem Dialog wirkungslos
+      app.onKeydown(new KeyboardEvent('keydown', { key: 'i' }));
+      expect(fs.infoToggleActive()).toBe(false);
+      app.onKeydown(new KeyboardEvent('keydown', { key: 'l' }));
+      expect(fs.viewMode()).toBe('grid');
+
+      // Pfeiltasten navigieren weiterhin
+      app.onKeydown(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+      expect(dialog.wine()?.name).toBe('B');
+    });
+  });
+
+  describe('Escape schließt den WineDetailDialog', () => {
+    const WINES: Wine[] = [{ name: 'A' } as Wine, { name: 'B' } as Wine];
+
+    function escSetup() {
+      const ctx = setup('loaded', WINES);
+      const dialog = TestBed.inject(DialogService);
+      const app = ctx.fixture.componentInstance;
+      return { ...ctx, dialog, app };
+    }
+
+    it('Escape schließt den geöffneten Dialog', () => {
+      const { app, dialog } = escSetup();
+      dialog.open(WINES[0]);
+      expect(dialog.wine()?.name).toBe('A');
+      app.onKeydown(new KeyboardEvent('keydown', { key: 'Escape' }));
+      expect(dialog.wine()).toBeNull();
+    });
+
+    it('Escape tut nichts bei geschlossenem Dialog', () => {
+      const { app, dialog } = escSetup();
+      expect(dialog.wine()).toBeNull();
+      app.onKeydown(new KeyboardEvent('keydown', { key: 'Escape' }));
+      expect(dialog.wine()).toBeNull();
+    });
+
+    it('Escape in einem Eingabefeld schließt den Dialog nicht', () => {
+      const { app, dialog } = escSetup();
+      dialog.open(WINES[0]);
+      const input = document.createElement('input');
+      const ev = new KeyboardEvent('keydown', { key: 'Escape' });
+      Object.defineProperty(ev, 'target', { value: input });
+      app.onKeydown(ev);
+      expect(dialog.wine()?.name).toBe('A');
+    });
   });
 });
