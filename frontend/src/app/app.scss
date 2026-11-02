@@ -1,0 +1,18 @@
+:host {
+  display: block;
+}
+
+.app-main {
+  min-height: 60vh;
+}
+
+.state {
+  padding: 4rem 1rem;
+  text-align: center;
+  font-size: 1.15rem;
+  color: var(--text-muted);
+}
+
+.state--error {
+  color: var(--accent-link-hover);
+}

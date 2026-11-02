@@ -1,0 +1,260 @@
+import { TestBed } from '@angular/core/testing';
+import fc from 'fast-check';
+import { applyFiltersAndSort, FilterService } from './filter.service';
+import { WineDataService } from './wine-data.service';
+import { UserPreferencesService } from './user-preferences.service';
+import { Wine, WineFilter } from '../models/wine.model';
+import { grapeList, valueList } from '../models/wine-util';
+import { arbitraryFilter, arbitraryWine, emptyFilter } from '../models/test-helpers';
+import { signal } from '@angular/core';
+import { WineSchemaField } from '../models/wine-schema.model';
+
+function wine(p: Partial<Wine>): Wine {
+  return { name: 'X', ...p } as Wine;
+}
+
+const SEARCH_FIELDS = ['name'];
+
+describe('applyFiltersAndSort (reine Funktion)', () => {
+  it('Navigationsfilter region matcht über slugify', () => {
+    const wines = [wine({ name: 'A', origin: 'Rheingau' }), wine({ name: 'B', origin: 'Mosel' })];
+    const out = applyFiltersAndSort(
+      wines,
+      emptyFilter(),
+      { type: 'region', slug: 'rheingau' },
+      'tasting_date_desc',
+      SEARCH_FIELDS,
+    );
+    expect(out.map((w) => w.name)).toEqual(['A']);
+  });
+
+  it('dropdown-Filter exakter Match', () => {
+    const wines = [wine({ name: 'A', country: 'DE' }), wine({ name: 'B', country: 'FR' })];
+    const f = emptyFilter();
+    f.dropdowns['country'] = 'FR';
+    const out = applyFiltersAndSort(wines, f, null, 'tasting_date_desc', SEARCH_FIELDS);
+    expect(out.map((w) => w.name)).toEqual(['B']);
+  });
+
+  it('grape OR innerhalb, AND zwischen', () => {
+    const wines = [
+      wine({ name: 'A', grape: ['Riesling'], country: 'DE' }),
+      wine({ name: 'B', grape: ['Silvaner'], country: 'DE' }),
+      wine({ name: 'C', grape: ['Riesling'], country: 'FR' }),
+    ];
+    const f = emptyFilter();
+    f.grape = ['Riesling', 'Silvaner'];
+    f.dropdowns['country'] = 'DE';
+    const out = applyFiltersAndSort(wines, f, null, 'tasting_date_desc', SEARCH_FIELDS);
+    expect(out.map((w) => w.name).sort()).toEqual(['A', 'B']);
+  });
+
+  it('rating-range schließt fehlende Werte aus', () => {
+    const wines = [wine({ name: 'A', rating: 8 }), wine({ name: 'B' })];
+    const f = emptyFilter();
+    f.ratingFrom = 6;
+    const out = applyFiltersAndSort(wines, f, null, 'tasting_date_desc', SEARCH_FIELDS);
+    expect(out.map((w) => w.name)).toEqual(['A']);
+  });
+
+  it('date-range schließt fehlendes Datum symmetrisch aus (von und bis)', () => {
+    const wines = [wine({ name: 'A', tasting_date: '2020-06-01' }), wine({ name: 'B' })];
+    const fFrom = emptyFilter();
+    fFrom.tastingDateFrom = '2020-01-01';
+    expect(
+      applyFiltersAndSort(wines, fFrom, null, 'tasting_date_desc', SEARCH_FIELDS).map((w) => w.name),
+    ).toEqual(['A']);
+    const fTo = emptyFilter();
+    fTo.tastingDateTo = '2021-01-01';
+    expect(
+      applyFiltersAndSort(wines, fTo, null, 'tasting_date_desc', SEARCH_FIELDS).map((w) => w.name),
+    ).toEqual(['A']);
+  });
+
+  it('mutiert die Eingabe nicht', () => {
+    const wines = [wine({ name: 'B', tasting_date: '2020-01-01' }), wine({ name: 'A', tasting_date: '2021-01-01' })];
+    const copy = [...wines];
+    applyFiltersAndSort(wines, emptyFilter(), null, 'tasting_date_asc', SEARCH_FIELDS);
+    expect(wines).toEqual(copy);
+  });
+
+  // Feature: weinliste, Property 10: Freitextsuche vergleicht ausschließlich schema-definierte
+  // text-search-Felder; jeder Treffer matcht case-insensitiv in >=1 dieser Felder, kein Nicht-Treffer erscheint.
+  it('Property 10: Freitextsuche Vollständigkeit/Korrektheit gegen searchFields', () => {
+    fc.assert(
+      fc.property(
+        fc.array(arbitraryWine(), { maxLength: 30 }),
+        fc.string({ minLength: 1, maxLength: 5 }),
+        fc.subarray(['name', 'producer', 'origin', 'grape']),
+        (wines, q, searchFields) => {
+          const f = emptyFilter();
+          f.searchText = q;
+          const out = applyFiltersAndSort(wines, f, null, 'tasting_date_desc', searchFields);
+          const query = q.toLowerCase().trim();
+          const matches = (w: Wine) =>
+            searchFields
+              .flatMap((fld) => valueList(w, fld))
+              .some((h) => h.toLowerCase().includes(query));
+          // Korrektheit: jeder Ausgabewein matcht
+          for (const w of out) expect(matches(w)).toBe(true);
+          // Vollständigkeit: jeder matchende Eingabewein ist in der Ausgabe
+          const outSet = new Set(out);
+          for (const w of wines) if (matches(w)) expect(outSet.has(w)).toBe(true);
+        },
+      ),
+      { numRuns: 100 },
+    );
+  });
+
+  // Feature: weinliste, Property 11: kombinierte Filter wirken als AND; jeder Ausgabewein erfüllt
+  // alle aktiven Kriterien, kein Wein der eins verletzt ist dabei.
+  it('Property 11: kombinierte Filter AND-Logik', () => {
+    fc.assert(
+      fc.property(fc.array(arbitraryWine(), { maxLength: 30 }), arbitraryFilter(), (wines, f) => {
+        const out = applyFiltersAndSort(wines, f, null, 'tasting_date_desc', SEARCH_FIELDS);
+        const satisfies = (w: Wine): boolean => {
+          if (f.searchText.trim()) {
+            const q = f.searchText.toLowerCase().trim();
+            const hay = SEARCH_FIELDS.flatMap((fld) => valueList(w, fld));
+            if (!hay.some((h) => h.toLowerCase().includes(q))) return false;
+          }
+          for (const [field, sel] of Object.entries(f.dropdowns))
+            if (sel != null && String((w as Record<string, unknown>)[field] ?? '') !== sel)
+              return false;
+          if (f.grape.length > 0) {
+            const g = grapeList(w);
+            if (!f.grape.some((x) => g.includes(x))) return false;
+          }
+          if (f.yearFrom != null && (w.year == null || w.year < f.yearFrom)) return false;
+          if (f.yearTo != null && (w.year == null || w.year > f.yearTo)) return false;
+          if (f.ratingFrom != null && (w.rating == null || w.rating < f.ratingFrom)) return false;
+          if (f.ratingTo != null && (w.rating == null || w.rating > f.ratingTo)) return false;
+          if (
+            f.tastingDateFrom != null &&
+            (w.tasting_date == null || w.tasting_date < f.tastingDateFrom)
+          )
+            return false;
+          if (
+            f.tastingDateTo != null &&
+            (w.tasting_date == null || w.tasting_date > f.tastingDateTo)
+          )
+            return false;
+          return true;
+        };
+        for (const w of out) expect(satisfies(w)).toBe(true);
+        const outSet = new Set(out);
+        for (const w of wines) if (satisfies(w)) expect(outSet.has(w)).toBe(true);
+      }),
+      { numRuns: 100 },
+    );
+  });
+
+  // Feature: weinliste, Property 14: Reihenfolge nach Filterung erhalten — ein Prefix-slice
+  // von filteredWines ist exaktes Prefix (gleiche Reihenfolge).
+  it('Property 14: visibleWines ist exaktes Prefix von filteredWines', () => {
+    fc.assert(
+      fc.property(
+        fc.array(arbitraryWine(), { maxLength: 40 }),
+        arbitraryFilter(),
+        fc.integer({ min: 0, max: 40 }),
+        (wines, f, count) => {
+          const full = applyFiltersAndSort(wines, f, null, 'rating_desc', SEARCH_FIELDS);
+          const prefix = full.slice(0, count);
+          for (let i = 0; i < prefix.length; i++) expect(prefix[i]).toBe(full[i]);
+        },
+      ),
+      { numRuns: 100 },
+    );
+  });
+});
+
+describe('FilterService', () => {
+  function setup(wines: Wine[], schema: WineSchemaField[] = []) {
+    const dataMock = {
+      wines: signal(wines),
+      schema: signal(schema),
+    };
+    const prefsMock = {
+      load: vi.fn().mockReturnValue({
+        visibleFilters: ['country'],
+        sortOption: 'rating_desc',
+        viewMode: 'list',
+      }),
+      save: vi.fn(),
+    };
+    TestBed.configureTestingModule({
+      providers: [
+        FilterService,
+        { provide: WineDataService, useValue: dataMock },
+        { provide: UserPreferencesService, useValue: prefsMock },
+      ],
+    });
+    return { service: TestBed.inject(FilterService), prefsMock, dataMock };
+  }
+
+  it('initialisiert aus dem Cookie im Konstruktor', () => {
+    const { service } = setup([]);
+    expect(service.sortOption()).toBe('rating_desc');
+    expect(service.viewMode()).toBe('list');
+    expect(service.visibleFilterFields()).toEqual(['country']);
+  });
+
+  it('availableRegions/Grapes mit Count, schließt null aus', () => {
+    const { service } = setup([
+      wine({ origin: 'Rheingau', grape: 'Riesling' }),
+      wine({ origin: 'Rheingau' }),
+      wine({ origin: null as unknown as undefined }),
+    ]);
+    expect(service.availableRegions()).toEqual([{ value: 'Rheingau', count: 2 }]);
+    expect(service.availableGrapes()).toEqual([{ value: 'Riesling', count: 1 }]);
+  });
+
+  it('hasActiveFilter: leer=false, numerisches 0 löst nicht aus, Werte lösen aus', () => {
+    const { service } = setup([]);
+    expect(service.hasActiveFilter()).toBe(false);
+    service.updateFilter({ ratingFrom: 0 });
+    expect(service.hasActiveFilter()).toBe(true);
+    service.clearAllFilters();
+    expect(service.hasActiveFilter()).toBe(false);
+    service.updateFilter({ grape: ['Riesling'] });
+    expect(service.hasActiveFilter()).toBe(true);
+    service.clearAllFilters();
+    service.updateFilter({ dropdowns: { ...service.filter().dropdowns, origin: 'Mosel' } });
+    expect(service.hasActiveFilter()).toBe(true);
+  });
+
+  it('clearAllFilters lässt Konfiguration unangetastet', () => {
+    const { service } = setup([]);
+    service.setSortOption('tasting_date_asc');
+    service.setViewMode('list');
+    service.toggleFilterField('origin', true);
+    service.updateFilter({ searchText: 'abc' });
+    service.setNavigationFilter('region', 'rheingau');
+    service.clearAllFilters();
+    expect(service.filter().searchText).toBe('');
+    expect(service.navigationFilter()).toBeNull();
+    expect(service.sortOption()).toBe('tasting_date_asc');
+    expect(service.viewMode()).toBe('list');
+    expect(service.visibleFilterFields()).toContain('origin');
+  });
+
+  it('setSortOption/setViewMode/toggleFilterField persistieren; updateFilter nicht', () => {
+    const { service, prefsMock } = setup([]);
+    prefsMock.save.mockClear();
+    service.updateFilter({ searchText: 'x' });
+    expect(prefsMock.save).not.toHaveBeenCalled();
+    service.setSortOption('tasting_date_asc');
+    expect(prefsMock.save).toHaveBeenCalled();
+  });
+
+  it('searchFields aus Schema abgeleitet', () => {
+    const { service } = setup(
+      [],
+      [
+        { field: 'name', type: 'text', filter_type: 'text-search', default_filter: true },
+        { field: 'origin', type: 'text', filter_type: 'dropdown', default_filter: false },
+      ],
+    );
+    expect(service.searchFields()).toEqual(['name']);
+  });
+});

@@ -1,0 +1,47 @@
+<div class="controls-row">
+  <div class="filters">
+    @for (f of standardFields(); track trackField($index, f)) {
+      <app-filter-field [field]="f" />
+    }
+    @for (f of extraFields(); track trackField($index, f)) {
+      <app-filter-field [field]="f" />
+    }
+  </div>
+
+  <div class="actions">
+    <div class="more-filters">
+      <button class="pill" type="button" (click)="toggleMoreFiltersMenu()">Mehr Filter ▾</button>
+      @if (moreFiltersOpen()) {
+        <div class="more-menu">
+          @for (f of toggleableFields(); track trackField($index, f)) {
+            <label class="more-item">
+              <input
+                type="checkbox"
+                [checked]="isFieldVisible(f.field)"
+                (change)="toggleMoreFilter(f.field, $any($event.target).checked)"
+              />
+              {{ f.field }}
+            </label>
+          } @empty {
+            <span class="more-empty">Keine weiteren Filter</span>
+          }
+        </div>
+      }
+    </div>
+
+    <app-sort-button />
+
+    <button
+      class="pill"
+      type="button"
+      [class.active]="fs.infoToggleActive()"
+      (click)="toggleInfo()"
+    >
+      Infos {{ fs.infoToggleActive() ? 'an' : 'aus' }}
+    </button>
+
+    <button class="pill" type="button" (click)="toggleList()">
+      {{ fs.viewMode() === 'grid' ? 'Liste' : 'Kacheln' }}
+    </button>
+  </div>
+</div>

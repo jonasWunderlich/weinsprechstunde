@@ -1,0 +1,20 @@
+.scroll-top {
+  position: fixed;
+  right: 1.5rem;
+  bottom: 1.5rem;
+  z-index: 50;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  border: none;
+  background: var(--accent-wine);
+  color: #fff;
+  font-size: 1.25rem;
+  cursor: pointer;
+  box-shadow: var(--box-shadow-subtle);
+  transition: background 0.2s ease;
+
+  &:hover {
+    background: var(--accent-link-hover);
+  }
+}

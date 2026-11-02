@@ -1,0 +1,17 @@
+<app-nav />
+<main class="app-main">
+  @switch (dataService.loadState()) {
+    @case ('loading') {
+      <div class="state state--loading">Lade Weine…</div>
+    }
+    @case ('error') {
+      <div class="state state--error">
+        Fehler beim Laden der Weindaten. Bitte Seite neu laden.
+      </div>
+    }
+    @default {
+      <router-outlet />
+    }
+  }
+</main>
+<app-wine-detail-dialog [wine]="dialog.wine()" (close)="dialog.close()" />

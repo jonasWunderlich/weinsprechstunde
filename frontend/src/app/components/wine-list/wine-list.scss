@@ -1,0 +1,33 @@
+:host {
+  display: block;
+}
+
+.wine-list {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 var(--padding-horizontal-md) var(--padding-horizontal-md);
+}
+
+.back-item {
+  display: block;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: none;
+  border-bottom: 2px dashed var(--accent-wine);
+  background: var(--color-surface);
+  color: var(--accent-wine);
+  text-align: left;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.empty-state {
+  padding: 3rem 1rem;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+}
+
+.scroll-sentinel {
+  height: 1px;
+}

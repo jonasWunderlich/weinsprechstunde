@@ -1,0 +1,105 @@
+<div class="filter-field">
+  @switch (field().filter_type) {
+    @case ('text-search') {
+      <label class="ff-label">{{ field().field }}</label>
+      <input
+        class="ff-input"
+        type="search"
+        [value]="fs.filter().searchText"
+        placeholder="Suche…"
+        (input)="onSearch($any($event.target).value)"
+      />
+    }
+    @case ('multi-select') {
+      <label class="ff-label">Rebsorte</label>
+      <div class="ff-chips">
+        @for (opt of options(); track opt) {
+          <label class="ff-chip" [class.selected]="isGrapeSelected(opt)">
+            <input
+              type="checkbox"
+              [checked]="isGrapeSelected(opt)"
+              (change)="toggleGrape(opt, $any($event.target).checked)"
+            />
+            {{ opt }}
+          </label>
+        } @empty {
+          <span class="ff-empty">Keine Werte</span>
+        }
+      </div>
+    }
+    @case ('dropdown') {
+      <label class="ff-label">{{ field().field }}</label>
+      <select
+        class="ff-select"
+        [value]="selectedDropdown()"
+        (change)="onDropdown($any($event.target).value)"
+      >
+        <option value="">— alle —</option>
+        @for (opt of options(); track opt) {
+          <option [value]="opt">{{ opt }}</option>
+        }
+      </select>
+    }
+    @case ('range') {
+      <label class="ff-label">{{ field().field }}</label>
+      <div class="ff-range">
+        <input
+          class="ff-num"
+          type="number"
+          placeholder="von"
+          [value]="fs.filter().yearFrom"
+          (input)="onYearFrom($any($event.target).value)"
+        />
+        <input
+          class="ff-num"
+          type="number"
+          placeholder="bis"
+          [value]="fs.filter().yearTo"
+          (input)="onYearTo($any($event.target).value)"
+        />
+      </div>
+    }
+    @case ('rating-range') {
+      <label class="ff-label">Bewertung</label>
+      <div class="ff-range">
+        <input
+          class="ff-num"
+          type="number"
+          min="1.0"
+          max="10.0"
+          step="0.1"
+          placeholder="von"
+          [value]="fs.filter().ratingFrom"
+          (input)="onRatingFrom($any($event.target).value)"
+        />
+        <input
+          class="ff-num"
+          type="number"
+          min="1.0"
+          max="10.0"
+          step="0.1"
+          placeholder="bis"
+          [value]="fs.filter().ratingTo"
+          (input)="onRatingTo($any($event.target).value)"
+        />
+      </div>
+    }
+    @case ('date-range') {
+      <label class="ff-label">Verkostungsdatum</label>
+      <div class="ff-range">
+        <input
+          class="ff-date"
+          type="date"
+          [value]="fs.filter().tastingDateFrom"
+          (input)="onDateFrom($any($event.target).value)"
+        />
+        <input
+          class="ff-date"
+          type="date"
+          [value]="fs.filter().tastingDateTo"
+          (input)="onDateTo($any($event.target).value)"
+        />
+      </div>
+    }
+  }
+</div>

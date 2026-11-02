@@ -1,0 +1,10 @@
+<select
+  class="sort-select"
+  aria-label="Sortierung"
+  [value]="fs.sortOption()"
+  (change)="onChange($any($event.target).value)"
+>
+  @for (o of options; track o.value) {
+    <option [value]="o.value">{{ o.label }}</option>
+  }
+</select>

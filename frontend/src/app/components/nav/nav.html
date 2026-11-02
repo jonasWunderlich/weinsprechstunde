@@ -1,0 +1,38 @@
+<nav class="navbar">
+  <button class="brand" type="button" (click)="goHome()" aria-label="Zur Startseite">
+    <span class="logo" aria-hidden="true">🍷</span>
+    <span class="app-name">Weinsprechstunde</span>
+  </button>
+
+  <div class="menus">
+    <div class="menu">
+      <button class="menu-trigger" type="button" (click)="toggleRegions()">Regionen ▾</button>
+      @if (regionsOpen()) {
+        <div class="dropdown">
+          @for (r of regions(); track r.value) {
+            <button class="dropdown-item" type="button" (click)="navigateToRegion(r.value)">
+              {{ r.value }} ({{ r.count }})
+            </button>
+          } @empty {
+            <span class="dropdown-empty">Keine Einträge</span>
+          }
+        </div>
+      }
+    </div>
+
+    <div class="menu">
+      <button class="menu-trigger" type="button" (click)="toggleGrapes()">Rebsorten ▾</button>
+      @if (grapesOpen()) {
+        <div class="dropdown">
+          @for (g of grapes(); track g.value) {
+            <button class="dropdown-item" type="button" (click)="navigateToGrape(g.value)">
+              {{ g.value }} ({{ g.count }})
+            </button>
+          } @empty {
+            <span class="dropdown-empty">Keine Einträge</span>
+          }
+        </div>
+      }
+    </div>
+  </div>
+</nav>

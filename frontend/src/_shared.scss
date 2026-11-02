@@ -1,0 +1,21 @@
+// Geteilte Breakpoints und Mixins (via @use in Komponenten-SCSS einbinden).
+
+$bp-tablet: 600px;
+$bp-desktop: 1024px;
+
+@mixin filter-button {
+  height: 40px;
+  padding: 0 1rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--accent-wine);
+  background: var(--color-surface);
+  color: var(--accent-wine);
+  cursor: pointer;
+  box-shadow: var(--box-shadow-subtle);
+}
+
+@mixin card-surface {
+  background: var(--color-surface);
+  border-radius: var(--radius-input);
+  box-shadow: var(--box-shadow-subtle);
+}

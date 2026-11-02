@@ -1,0 +1,13 @@
+@if (isEmpty()) {
+  <div class="empty-state">Keine Weine gefunden</div>
+} @else {
+  <div class="wine-list">
+    @if (showBackButton()) {
+      <button class="back-item" type="button" (click)="goBack()">← Zurück</button>
+    }
+    @for (wine of visibleWines(); track wine.name + ($index)) {
+      <app-wine-list-item [wine]="wine" (openDetail)="openDetail($event)" />
+    }
+  </div>
+  <div #sentinel class="scroll-sentinel" aria-hidden="true"></div>
+}

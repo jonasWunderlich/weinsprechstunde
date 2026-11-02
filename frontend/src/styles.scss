@@ -1,0 +1,52 @@
+/* Globale Design-Tokens (Light Mode, Weinpalette), Resets, Grundtypografie. */
+
+:root {
+  --color-bg: #faf7f4;
+  --color-surface: #ffffff;
+  --text-dark: #2b2320;
+  --text-muted: rgba(43, 35, 32, 0.55);
+  --accent-wine: #7b1e2b; /* Bordeaux als Leitfarbe */
+  --accent-link: #9c4a54;
+  --accent-link-hover: #c0392b;
+  --color-highlight: #c9a227; /* Gold für Rating-Kreis */
+  --background-info-tile: rgba(255, 255, 255, 0.95);
+  --padding-horizontal-md: 12px;
+  --box-shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.12);
+  --radius-pill: 20px;
+  --radius-input: 8px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--text-dark);
+  font-family:
+    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.4;
+}
+
+a {
+  color: var(--accent-link);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--accent-link-hover);
+}
+
+button {
+  font-family: inherit;
+}

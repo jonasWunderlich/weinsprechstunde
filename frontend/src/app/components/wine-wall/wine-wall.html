@@ -1,0 +1,7 @@
+<app-controls-row />
+@if (filterService.viewMode() === 'grid') {
+  <app-wine-grid />
+} @else {
+  <app-wine-list />
+}
+<app-scroll-top-button />

@@ -1,0 +1,18 @@
+<div
+  class="tile"
+  (mouseenter)="onMouseEnter()"
+  (mouseleave)="onMouseLeave()"
+  (click)="onTileClick()"
+>
+  <app-wine-tile-cover [wine]="wine()" />
+
+  @if (hasMedia()) {
+    <button class="play-btn" type="button" aria-label="Medien abspielen" (click)="onPlay($event)">
+      ▶
+    </button>
+  }
+
+  @if (overlayVisible()) {
+    <app-wine-tile-overlay [wine]="wine()" />
+  }
+</div>

@@ -1,0 +1,20 @@
+@if (isEmpty()) {
+  <div class="empty-state">Keine Weine gefunden</div>
+} @else {
+  <div class="wine-grid">
+    @if (showBackButton()) {
+      <button class="back-tile" type="button" (click)="goBack()" aria-label="Filter zurücksetzen">
+        <span class="back-arrow">←</span>
+        <span>Zurück</span>
+      </button>
+    }
+    @for (wine of visibleWines(); track wine.name + ($index)) {
+      <app-wine-tile
+        [wine]="wine"
+        [showInfos]="fs.infoToggleActive()"
+        (openDetail)="openDetail($event)"
+      />
+    }
+  </div>
+  <div #sentinel class="scroll-sentinel" aria-hidden="true"></div>
+}

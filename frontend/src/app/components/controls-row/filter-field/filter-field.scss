@@ -1,0 +1,61 @@
+.filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.ff-label {
+  font-size: 0.72rem;
+  text-transform: capitalize;
+  color: var(--text-muted);
+}
+
+.ff-input,
+.ff-select,
+.ff-num,
+.ff-date {
+  height: 36px;
+  padding: 0 0.6rem;
+  border: 2px solid var(--accent-wine);
+  border-radius: var(--radius-input);
+  background: var(--color-surface);
+  color: var(--text-dark);
+  font-size: 0.85rem;
+}
+
+.ff-range {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.ff-num {
+  width: 5rem;
+}
+
+.ff-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  max-width: 320px;
+}
+
+.ff-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid var(--accent-wine);
+  border-radius: var(--radius-pill);
+  font-size: 0.8rem;
+  cursor: pointer;
+
+  &.selected {
+    background: var(--accent-wine);
+    color: #fff;
+  }
+}
+
+.ff-empty {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}

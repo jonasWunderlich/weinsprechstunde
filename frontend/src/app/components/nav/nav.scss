@@ -1,0 +1,95 @@
+.navbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem var(--padding-horizontal-md);
+  background: var(--color-surface);
+  box-shadow: 0 2px 15px rgba(0, 0, 0, 0.08);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--accent-wine);
+}
+
+.logo {
+  font-size: 1.6rem;
+}
+
+.app-name {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.menus {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.menu {
+  position: relative;
+}
+
+.menu-trigger {
+  height: 40px;
+  padding: 0 1rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--accent-wine);
+  background: var(--color-surface);
+  color: var(--accent-wine);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.dropdown {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  right: 0;
+  min-width: 220px;
+  max-height: 60vh;
+  overflow: auto;
+  padding: 0.5rem;
+  background: var(--color-surface);
+  border: 1px solid rgba(43, 35, 32, 0.15);
+  border-radius: var(--radius-input);
+  box-shadow: var(--box-shadow-subtle);
+  column-count: 1;
+}
+
+@media (min-width: 1025px) {
+  .dropdown {
+    column-count: 2;
+    min-width: 360px;
+  }
+}
+
+.dropdown-item {
+  display: block;
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  border: none;
+  background: none;
+  text-align: left;
+  color: var(--accent-link);
+  font-size: 0.88rem;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--accent-link-hover);
+  }
+}
+
+.dropdown-empty {
+  display: block;
+  padding: 0.35rem 0.5rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}

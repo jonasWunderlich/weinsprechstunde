@@ -1,0 +1,53 @@
+:host {
+  display: block;
+}
+
+.wine-grid {
+  display: grid;
+  gap: var(--padding-horizontal-md);
+  padding: 0 var(--padding-horizontal-md) var(--padding-horizontal-md);
+  grid-template-columns: 1fr; /* mobile < 600px */
+}
+
+@media (min-width: 600px) {
+  .wine-grid {
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  }
+}
+
+@media (min-width: 1025px) {
+  .wine-grid {
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  }
+}
+
+.back-tile {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: 2px dashed var(--accent-wine);
+  border-radius: var(--radius-input);
+  background: var(--color-surface);
+  color: var(--accent-wine);
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.back-arrow {
+  font-size: 2rem;
+}
+
+.empty-state {
+  padding: 3rem 1rem;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+}
+
+.scroll-sentinel {
+  height: 1px;
+}

@@ -1,0 +1,20 @@
+<div class="overlay">
+  @if (isPresent(wine().rating)) {
+    <app-rating-circle class="overlay-rating" data-field="rating" [value]="$any(wine().rating)" />
+  }
+  @if (isPresent(wine().year)) {
+    <div class="wine-year" data-field="year">{{ wine().year }}</div>
+  }
+  @if (isPresent(wine().name)) {
+    <div class="wine-name" data-field="name">{{ wine().name }}</div>
+  }
+  @if (isPresent(wine().producer)) {
+    <div class="wine-producer" data-field="producer">{{ wine().producer }}</div>
+  }
+  @if (grapeList(wine()).length) {
+    <div class="wine-grape" data-field="grape">{{ grapeList(wine()).join(', ') }}</div>
+  }
+  @if (isPresent(wine().origin)) {
+    <div class="wine-origin" data-field="origin">{{ wine().origin }}</div>
+  }
+</div>

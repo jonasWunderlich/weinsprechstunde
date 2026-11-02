@@ -1,0 +1,15 @@
+<button class="list-item" type="button" (click)="open()">
+  <span class="li-name" data-field="name">{{ wine().name }}</span>
+  @if (isPresent(wine().producer)) {
+    <span class="li-producer" data-field="producer">{{ wine().producer }}</span>
+  }
+  @if (isPresent(wine().year)) {
+    <span class="li-year" data-field="year">{{ wine().year }}</span>
+  }
+  @if (isPresent(wine().country)) {
+    <span class="li-country" data-field="country">{{ wine().country }}</span>
+  }
+  @if (isPresent(wine().rating)) {
+    <app-rating-circle class="li-rating" data-field="rating" [value]="$any(wine().rating)" />
+  }
+</button>
