@@ -77,7 +77,8 @@ def test_rename_collision_skips_with_warning(tmp_path, capsys):
     assert (import_dir / "orig.json").exists()
 
 
-def test_missing_year_skips_rename_keeps_file(tmp_path, capsys):
+def test_rename_without_year_only_tasting_date(tmp_path):
+    # tasting_date genügt für die Umbenennung – ein 'year'-Feld ist nicht nötig.
     import_dir = tmp_path / "import"
     import_dir.mkdir()
     write_json(import_dir / "wein.json", {"name": "Ohne Jahr", "tasting_date": "2021-10-12"})
@@ -85,8 +86,34 @@ def test_missing_year_skips_rename_keeps_file(tmp_path, capsys):
     config = make_config(import_dir=str(import_dir), scaffold_mode=False)
     wi.phase_prepare(config, default_schema())
 
+    assert (import_dir / "2021-10-12-ohne-jahr.json").exists()
+    assert not (import_dir / "wein.json").exists()
+
+
+def test_missing_tasting_date_skips_rename_keeps_file(tmp_path, capsys):
+    import_dir = tmp_path / "import"
+    import_dir.mkdir()
+    write_json(import_dir / "wein.json", {"name": "Ohne Datum", "year": 2019})
+
+    config = make_config(import_dir=str(import_dir), scaffold_mode=False)
+    wi.phase_prepare(config, default_schema())
+
     assert (import_dir / "wein.json").exists()
-    assert "kein 'year'" in capsys.readouterr().err
+    assert "kein 'tasting_date'" in capsys.readouterr().err
+
+
+def test_rename_keeps_file_in_subfolder(tmp_path):
+    # Die Verzeichnisstruktur bleibt erhalten: Datei wird im Unterordner umbenannt.
+    import_dir = tmp_path / "import"
+    sub = import_dir / "2021" / "oktober"
+    sub.mkdir(parents=True)
+    write_json(sub / "wein.json", {"name": "Im Unterordner", "tasting_date": "2021-10-12"})
+
+    config = make_config(import_dir=str(import_dir), scaffold_mode=False)
+    wi.phase_prepare(config, default_schema())
+
+    assert (sub / "2021-10-12-im-unterordner.json").exists()
+    assert not (sub / "wein.json").exists()
 
 
 def test_missing_name_skips_with_warning(tmp_path, capsys):

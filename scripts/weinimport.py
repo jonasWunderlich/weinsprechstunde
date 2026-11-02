@@ -376,12 +376,26 @@ def _prune_backups(backup_dir: Path, prefix: str, max_count: int) -> None:
 
 def _remote_backup(config: Config, last_name: Optional[str],
                    archival_name: Optional[str]) -> None:
-    """Lokale Backup-Ordner auf den Webspace übertragen (best effort)."""
+    """Lokale Backup-Ordner auf den Webspace übertragen (best effort).
+
+    Best effort bedeutet: Ist kein Deploy-Passwort verfügbar (z. B. bei einem
+    rein lokalen Lauf ohne gesetzte Umgebungsvariable), wird das Remote-Backup
+    übersprungen und die Pipeline läuft weiter (Req 19.7, 19.9) – das Skript
+    bricht NICHT ab.
+    """
     assert config.backup is not None
     remote_base = config.backup.remote_backup_dir
     if not remote_base:
         return
-    password = resolve_password(config)
+    password = config.deploy.password or os.environ.get(
+        "WEINSPRECHSTUNDE_DEPLOY_PASSWORD", ""
+    )
+    if not password:
+        sys.stderr.write(
+            "WARNUNG: Remote-Backup übersprungen – kein Deploy-Passwort gesetzt "
+            "(WEINSPRECHSTUNDE_DEPLOY_PASSWORD). Lokales Backup bleibt bestehen.\n"
+        )
+        return
     backup_dir = Path(config.backup.backup_dir)
     names = [n for n in (last_name, archival_name) if n]
     if not names:
@@ -504,14 +518,14 @@ def phase_prepare(config: Config, schema: list[SchemaField]) -> None:
             if exif_date:
                 data["tasting_date"] = exif_date
 
-        # 3. Umbenennung (braucht tasting_date + year)
-        if data.get("tasting_date") and data.get("year"):
+        # 3. Umbenennung (braucht nur tasting_date; Datei bleibt im Unterordner)
+        if data.get("tasting_date"):
             new_stem = f"{data['tasting_date']}-{slugify_name(data['name'])}"
             rename_file_group(json_file, new_stem, data)
             json_file = json_file.parent / f"{new_stem}.json"
-        elif not data.get("year"):
+        else:
             sys.stderr.write(
-                f"WARNUNG: {json_file} – kein 'year', Umbenennung übersprungen.\n"
+                f"WARNUNG: {json_file} – kein 'tasting_date', Umbenennung übersprungen.\n"
             )
 
         # 4. Typ-Normalisierung für number-Felder (year, price, rating, …)

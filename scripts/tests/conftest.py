@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "weinimport.py"
+WPM_SCRIPT_PATH = Path(__file__).resolve().parents[1] / "wordpress_migrate.py"
 
 
 def _load_weinimport():
@@ -19,13 +20,103 @@ def _load_weinimport():
     return module
 
 
+def _load_wordpress_migrate():
+    spec = importlib.util.spec_from_file_location(
+        "wordpress_migrate", WPM_SCRIPT_PATH
+    )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["wordpress_migrate"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 weinimport = _load_weinimport()
+wordpress_migrate = _load_wordpress_migrate()
 
 
 @pytest.fixture
 def wi():
     """Das geladene weinimport-Modul."""
     return weinimport
+
+
+@pytest.fixture
+def wpm():
+    """Das geladene wordpress_migrate-Modul."""
+    return wordpress_migrate
+
+
+def _sql_literal(value) -> str:
+    """Python-Wert als SQL-Literal für die Fixture-Dumps formatieren."""
+    if value is None:
+        return "NULL"
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    if isinstance(value, (int, float)):
+        return str(value)
+    escaped = (
+        str(value)
+        .replace("\\", "\\\\")
+        .replace("'", "\\'")
+        .replace('"', '\\"')
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace("\t", "\\t")
+        .replace("\0", "\\0")
+    )
+    return f"'{escaped}'"
+
+
+def make_sql_dump(tmp: Path, name: str, posts=None, postmeta=None,
+                  prefix: str = "wp_") -> Path:
+    """Kleinen, syntaktisch echten mysqldump-Textdump schreiben.
+
+    ``posts``: Liste von dicts (beliebige Spalten, mind. ID/post_type).
+    ``postmeta``: Liste von (post_id, meta_key, meta_value)-Tupeln; die
+    ``meta_id`` wird automatisch vergeben.
+    """
+    lines: list[str] = []
+
+    if posts:
+        cols = ["ID", "post_author", "post_date", "post_title",
+                "post_name", "post_parent", "post_type",
+                "post_mime_type", "comment_count"]
+        lines.append(
+            f"INSERT INTO `{prefix}posts` "
+            f"({', '.join(f'`{c}`' for c in cols)}) VALUES"
+        )
+        rows = []
+        for p in posts:
+            row = ", ".join(_sql_literal(p.get(c)) for c in cols)
+            rows.append(f"({row})")
+        lines.append(",\n".join(rows) + ";")
+
+    if postmeta:
+        lines.append(
+            f"INSERT INTO `{prefix}postmeta` "
+            f"(`meta_id`, `post_id`, `meta_key`, `meta_value`) VALUES"
+        )
+        rows = []
+        for i, (post_id, key, value) in enumerate(postmeta, start=1):
+            rows.append(
+                f"({i}, {_sql_literal(post_id)}, "
+                f"{_sql_literal(key)}, {_sql_literal(value)})"
+            )
+        lines.append(",\n".join(rows) + ";")
+
+    path = tmp / name
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
+def make_uploads(tmp: Path, files: dict) -> Path:
+    """Uploads-Ordner mit {relativer Pfad: bytes} anlegen; Pfad zurückgeben."""
+    uploads = tmp / "uploads"
+    for rel, content in files.items():
+        target = uploads / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
+    return uploads
 
 
 def make_config(**overrides):

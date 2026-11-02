@@ -12,7 +12,9 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from conftest import default_schema, make_config, make_jpeg, write_json
+from conftest import make_sql_dump
 from conftest import weinimport as wi
+from conftest import wordpress_migrate as wpm
 
 # hypothesis ruft die Testfunktion mehrfach mit demselben function-scoped
 # tmp_path auf. Für Phasen, die Dateien schreiben/umbenennen, braucht jede
@@ -501,3 +503,98 @@ def test_property_23_number_normalization(tmp_path, whole, frac, use_comma, fiel
     else:
         assert isinstance(result, float)
         assert _decimal_places(result) <= decimals
+
+
+# ---------------------------------------------------------------------------
+# Property 22: Migration — Verarbeitung gemäß geprüfter Mapping-Datei
+# ---------------------------------------------------------------------------
+
+# meta_keys ohne '_'/'field_'-Präfix (reine Nutzdaten), damit die zufälligen
+# Aktionen frei wählbar sind; Werte sind nicht-leere Strings.
+_meta_key = st.text(
+    alphabet="abcdefghijklmnopqrstuvwxyz0123456789", min_size=1, max_size=8
+).filter(lambda k: not k.startswith("field_"))
+# Nicht-leere Werte: schließt "", reinen Whitespace und den Platzhalter "0"
+# aus, da diese von migrate bewusst nicht übernommen werden (siehe eigener
+# Leer-Wert-Test in test_wordpress_migrate.py).
+_meta_value = st.text(min_size=1, max_size=15).filter(
+    lambda v: v.strip() not in ("", "0")
+)
+_action = st.sampled_from(["map", "unmapped", "ignore"])
+
+
+# Feature: weinliste, Property 22: Migration — jedes map-Feld landet unter
+# target, jedes unmapped-Feld unter wp_unmapped_, kein ignore-Feld erscheint,
+# und ein Feld ohne Mapping-Eintrag führt zum Abbruch (kein stilles Verwerfen).
+@settings(max_examples=100,
+          suppress_health_check=[HealthCheck.function_scoped_fixture])
+@given(
+    entries=st.dictionaries(_meta_key, st.tuples(_meta_value, _action),
+                            min_size=1, max_size=8),
+    drop_one=st.booleans(),
+)
+def test_property_22_migration_follows_mapping(tmp_path, entries, drop_one):
+    migrate_dir = fresh_dir(tmp_path, "migrate_wordpress")
+    import_dir = fresh_dir(tmp_path, "import")
+    uploads = migrate_dir / "uploads"
+    uploads.mkdir(parents=True, exist_ok=True)
+
+    # 'name' ist bei map ein echtes target; um Kollisionen mit dem Pflicht-name
+    # zu vermeiden, verwenden wir für map-Felder generische Ziel-Feldnamen.
+    postmeta = [(1, key, value) for key, (value, _action_) in entries.items()]
+    make_sql_dump(
+        migrate_dir, "dump.sql",
+        posts=[{"ID": 1, "post_title": "Prop22 Wein",
+                "post_date": "2021-05-01 10:00:00",
+                "post_type": "weinsprechstunde"}],
+        postmeta=postmeta,
+    )
+
+    mapping = {}
+    for key, (_value, action) in entries.items():
+        target = f"wp_target_{key}" if action == "map" else None
+        mapping[key] = {"target": target, "action": action, "_count": 1}
+
+    # Variante A: ein vorkommendes Feld fehlt im Mapping -> Abbruch erwartet.
+    if drop_one and len(mapping) >= 1:
+        dropped = sorted(mapping.keys())[0]
+        del mapping[dropped]
+        (tmp_path / "wordpress-mapping.json").write_text(
+            json.dumps(mapping), encoding="utf-8"
+        )
+        import pytest
+        with pytest.raises(SystemExit):
+            # Mapping-Datei liegt in tmp_path; migrate liest relativ zum cwd.
+            _run_migrate(tmp_path, migrate_dir, import_dir)
+        return
+
+    # Variante B: vollständiges Mapping -> Invarianten prüfen.
+    (tmp_path / "wordpress-mapping.json").write_text(
+        json.dumps(mapping), encoding="utf-8"
+    )
+    _run_migrate(tmp_path, migrate_dir, import_dir)
+
+    files = list(import_dir.glob("*.json"))
+    assert len(files) == 1
+    data = json.loads(files[0].read_text(encoding="utf-8"))
+
+    for key, (value, action) in entries.items():
+        if action == "map":
+            assert data[f"wp_target_{key}"] == value
+        elif action == "unmapped":
+            assert data[f"wp_unmapped_{key}"] == value
+        else:  # ignore
+            assert f"wp_unmapped_{key}" not in data
+            assert key not in data
+
+
+def _run_migrate(cwd, migrate_dir, import_dir):
+    """migrate mit der Mapping-Datei in cwd ausführen (relativer MAPPING_PATH)."""
+    import os
+
+    prev = os.getcwd()
+    os.chdir(cwd)
+    try:
+        wpm.migrate(migrate_dir=str(migrate_dir), import_dir=str(import_dir))
+    finally:
+        os.chdir(prev)

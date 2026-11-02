@@ -383,13 +383,13 @@ def phase_prepare(config: Config, schema: list[SchemaField]) -> None:
             if exif_date:
                 data["tasting_date"] = exif_date
 
-        # 3. Umbenennung (braucht tasting_date + year)
-        if data.get("tasting_date") and data.get("year"):
+        # 3. Umbenennung (braucht nur tasting_date; Datei bleibt im Unterordner)
+        if data.get("tasting_date"):
             new_stem = f"{data['tasting_date']}-{slugify_name(data['name'])}"
             rename_file_group(json_file, new_stem, data)
             json_file = json_file.parent / f"{new_stem}.json"
-        elif not data.get("year"):
-            sys.stderr.write(f"WARNUNG: {json_file} – kein 'year', Umbenennung übersprungen.\n")
+        else:
+            sys.stderr.write(f"WARNUNG: {json_file} – kein 'tasting_date', Umbenennung übersprungen.\n")
 
         # 4. Typ-Normalisierung für number-Felder (year, price, rating, …)
         normalize_number_fields(data, schema, json_file)
