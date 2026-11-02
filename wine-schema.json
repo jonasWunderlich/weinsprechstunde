@@ -1,0 +1,17 @@
+[
+  { "field": "name",         "type": "text",        "filter_type": "text-search",  "default_filter": true  },
+  { "field": "year",         "type": "number",      "filter_type": "range",        "default_filter": false },
+  { "field": "country",      "type": "text",        "filter_type": "dropdown",     "default_filter": false },
+  { "field": "origin",       "type": "text",        "filter_type": "dropdown",     "default_filter": false },
+  { "field": "grape",        "type": "multi-value", "filter_type": "multi-select", "default_filter": true  },
+  { "field": "type",         "type": "text",        "filter_type": "dropdown",     "default_filter": false },
+  { "field": "producer",     "type": "text",        "filter_type": "dropdown",     "default_filter": false },
+  { "field": "quality",      "type": "text",        "filter_type": "dropdown",     "default_filter": false },
+  { "field": "price",        "type": "text",        "filter_type": null,           "default_filter": false },
+  { "field": "rating",       "type": "rating",      "filter_type": "rating-range", "default_filter": true  },
+  { "field": "tasting_date", "type": "date",        "filter_type": "date-range",   "default_filter": true  },
+  { "field": "image",        "type": "text",        "filter_type": null,           "default_filter": false },
+  { "field": "audio",        "type": "text",        "filter_type": null,           "default_filter": false },
+  { "field": "video",        "type": "text",        "filter_type": null,           "default_filter": false },
+  { "field": "description",  "type": "text",        "filter_type": null,           "default_filter": false }
+]

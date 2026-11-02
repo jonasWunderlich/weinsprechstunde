@@ -1,3 +1,24 @@
 .kiro/specs/weinliste/.config.kiro
 import/
 migrate_wordpress/
+
+# Secrets / Zugangsdaten (niemals committen)
+.env
+.env.*
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Node / Angular
+node_modules/
+dist/
+
+# Generierte Artefakte
+export/images/*
+!export/images/.gitkeep
+backup/*
+!backup/.gitkeep
+frontend/src/assets/wines.json
+wordpress-mapping.json
