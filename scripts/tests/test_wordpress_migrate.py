@@ -451,3 +451,62 @@ class TestMigrate:
 
         data = json.loads(next(import_dir.glob("*.json")).read_text())
         assert data["name"] == "Echter Wein"
+
+
+class TestMigrateGuard:
+    """Schutz vor versehentlichem erneuten Migrieren (Req 20.21, 20.22)."""
+
+    def _prepare_env(self, tmp_path, monkeypatch):
+        migrate_dir = tmp_path / "migrate_wordpress"
+        migrate_dir.mkdir()
+        make_sql_dump(
+            migrate_dir, "dump.sql",
+            posts=[{"ID": 1, "post_title": "W",
+                    "post_date": "2021-05-01 10:00:00",
+                    "post_type": "weinsprechstunde"}],
+            postmeta=[(1, "name", "Echter Wein")],
+        )
+        (migrate_dir / "uploads").mkdir()
+        (tmp_path / "wordpress-mapping.json").write_text(
+            json.dumps({"name": {"target": "name", "action": "map", "_count": 1}}),
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(tmp_path)
+        return migrate_dir
+
+    def test_migrate_aborts_when_import_dir_has_data(self, wpm, tmp_path, monkeypatch, capsys):
+        migrate_dir = self._prepare_env(tmp_path, monkeypatch)
+        import_dir = tmp_path / "import"
+        import_dir.mkdir()
+        (import_dir / "bereits-da.json").write_text(
+            json.dumps({"name": "Schon importiert"}), encoding="utf-8"
+        )
+
+        with pytest.raises(SystemExit) as exc:
+            wpm.main(["migrate", "--migrate-dir", str(migrate_dir),
+                      "--import-dir", str(import_dir)])
+        assert exc.value.code == 1
+        err = capsys.readouterr().err
+        assert "--force" in err
+        assert (import_dir / "bereits-da.json").exists()
+
+    def test_migrate_force_runs_despite_existing_data(self, wpm, tmp_path, monkeypatch):
+        migrate_dir = self._prepare_env(tmp_path, monkeypatch)
+        import_dir = tmp_path / "import"
+        import_dir.mkdir()
+        (import_dir / "bereits-da.json").write_text(
+            json.dumps({"name": "Schon importiert"}), encoding="utf-8"
+        )
+
+        wpm.main(["migrate", "--migrate-dir", str(migrate_dir),
+                  "--import-dir", str(import_dir), "--force"])
+        names = {json.loads(p.read_text())["name"] for p in import_dir.glob("*.json")}
+        assert "Echter Wein" in names
+
+    def test_migrate_runs_when_import_dir_empty(self, wpm, tmp_path, monkeypatch):
+        migrate_dir = self._prepare_env(tmp_path, monkeypatch)
+        import_dir = tmp_path / "import"
+        wpm.main(["migrate", "--migrate-dir", str(migrate_dir),
+                  "--import-dir", str(import_dir)])
+        names = {json.loads(p.read_text())["name"] for p in import_dir.glob("*.json")}
+        assert "Echter Wein" in names
