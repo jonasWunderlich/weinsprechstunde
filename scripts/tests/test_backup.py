@@ -1,4 +1,9 @@
-"""Unit-Tests für Phase backup (Rolling Window + Intervall + Fehlerbehandlung)."""
+"""Unit-Tests für Phase backup (Rolling Window + Intervall + Fehlerbehandlung).
+
+Backup sichert ausschließlich die exportierte wines.json als einzelne,
+zeitgestempelte Datei (``last_<ts>.json`` / ``archival_<ts>.json``) – nicht den
+Import-Ordner.
+"""
 
 from datetime import datetime, timedelta
 
@@ -20,11 +25,12 @@ def make_backup_config(wi_mod, tmp_path, **overrides):
     return wi_mod.BackupConfig(**defaults)
 
 
-def setup_import(tmp_path):
-    import_dir = tmp_path / "import"
-    import_dir.mkdir()
-    write_json(import_dir / "w.json", {"name": "A"})
-    return import_dir
+def setup_export(tmp_path, content='[{"name": "A"}]'):
+    """Lege eine exportierte wines.json an und gib ihren Pfad zurück."""
+    export_path = tmp_path / "export" / "data" / "wines.json"
+    export_path.parent.mkdir(parents=True, exist_ok=True)
+    export_path.write_text(content, encoding="utf-8")
+    return export_path
 
 
 class FrozenDatetime(datetime):
@@ -42,13 +48,40 @@ def run_backup_at(monkeypatch, config, moment):
 
 
 def count_prefix(backup_dir, prefix):
-    return len([d for d in backup_dir.iterdir() if d.is_dir() and d.name.startswith(prefix)])
+    return len(
+        [
+            f
+            for f in backup_dir.iterdir()
+            if f.is_file()
+            and f.name.startswith(prefix)
+            and f.name != wi.LAST_ARCHIVAL_FILE
+        ]
+    )
+
+
+def test_last_backup_is_single_file_copy_of_export(tmp_path, monkeypatch):
+    export_path = setup_export(tmp_path, content='[{"name": "A"}]')
+    backup = make_backup_config(wi, tmp_path, archival_interval_days=0)
+    config = make_config(export_path=str(export_path), backup=backup)
+    backup_dir = tmp_path / "backup"
+
+    run_backup_at(monkeypatch, config, datetime(2024, 1, 1, 12, 0, 0))
+
+    last_files = [f for f in backup_dir.iterdir() if f.name.startswith("last_")]
+    assert len(last_files) == 1
+    backup_file = last_files[0]
+    # Einzelne Datei (kein Ordner) mit .json-Endung
+    assert backup_file.is_file()
+    assert backup_file.suffix == ".json"
+    assert backup_file.name == "last_2024-01-01_12-00-00.json"
+    # Inhalt entspricht der exportierten wines.json – NICHT dem Import-Ordner
+    assert backup_file.read_text(encoding="utf-8") == '[{"name": "A"}]'
 
 
 def test_last_rolling_window(tmp_path, monkeypatch):
-    import_dir = setup_import(tmp_path)
+    export_path = setup_export(tmp_path)
     backup = make_backup_config(wi, tmp_path, max_last_backups=3, archival_interval_days=0)
-    config = make_config(import_dir=str(import_dir), backup=backup)
+    config = make_config(export_path=str(export_path), backup=backup)
     backup_dir = tmp_path / "backup"
 
     for i in range(5):
@@ -58,9 +91,9 @@ def test_last_rolling_window(tmp_path, monkeypatch):
 
 
 def test_archival_not_due_within_interval(tmp_path, monkeypatch):
-    import_dir = setup_import(tmp_path)
+    export_path = setup_export(tmp_path)
     backup = make_backup_config(wi, tmp_path, archival_interval_days=30)
-    config = make_config(import_dir=str(import_dir), backup=backup)
+    config = make_config(export_path=str(export_path), backup=backup)
     backup_dir = tmp_path / "backup"
 
     run_backup_at(monkeypatch, config, datetime(2024, 1, 1, 12, 0, 0))
@@ -71,9 +104,9 @@ def test_archival_not_due_within_interval(tmp_path, monkeypatch):
 
 
 def test_archival_due_after_interval(tmp_path, monkeypatch):
-    import_dir = setup_import(tmp_path)
+    export_path = setup_export(tmp_path)
     backup = make_backup_config(wi, tmp_path, max_archival_backups=5, archival_interval_days=30)
-    config = make_config(import_dir=str(import_dir), backup=backup)
+    config = make_config(export_path=str(export_path), backup=backup)
     backup_dir = tmp_path / "backup"
 
     run_backup_at(monkeypatch, config, datetime(2024, 1, 1, 12, 0, 0))
@@ -81,15 +114,60 @@ def test_archival_due_after_interval(tmp_path, monkeypatch):
     assert count_prefix(backup_dir, "archival_") == 2
 
 
-def test_backup_failure_warns_no_abort(tmp_path, monkeypatch, capsys):
-    import_dir = setup_import(tmp_path)
+def test_archival_backup_is_single_file(tmp_path, monkeypatch):
+    export_path = setup_export(tmp_path, content='[{"name": "B"}]')
+    backup = make_backup_config(wi, tmp_path, archival_interval_days=30)
+    config = make_config(export_path=str(export_path), backup=backup)
+    backup_dir = tmp_path / "backup"
+
+    run_backup_at(monkeypatch, config, datetime(2024, 1, 1, 12, 0, 0))
+
+    archival_files = [f for f in backup_dir.iterdir() if f.name.startswith("archival_")]
+    assert len(archival_files) == 1
+    assert archival_files[0].is_file()
+    assert archival_files[0].name == "archival_2024-01-01_12-00-00.json"
+    assert archival_files[0].read_text(encoding="utf-8") == '[{"name": "B"}]'
+
+
+def test_marker_file_not_pruned_as_backup(tmp_path, monkeypatch):
+    """Die .last_archival-Marker-Datei darf nicht als Backup gewertet/geprunt werden."""
+    export_path = setup_export(tmp_path)
+    backup = make_backup_config(wi, tmp_path, max_last_backups=3, archival_interval_days=30)
+    config = make_config(export_path=str(export_path), backup=backup)
+    backup_dir = tmp_path / "backup"
+
+    for i in range(5):
+        run_backup_at(monkeypatch, config, datetime(2024, 1, 1, 12, 0, i))
+
+    marker = backup_dir / wi.LAST_ARCHIVAL_FILE
+    assert marker.exists()
+    assert count_prefix(backup_dir, "last_") == 3
+
+
+def test_backup_skipped_when_export_missing(tmp_path, monkeypatch, capsys):
+    """Fehlt die Export-Datei (backup vor erstem export), Warnung statt Crash."""
+    export_path = tmp_path / "export" / "data" / "wines.json"  # existiert nicht
     backup = make_backup_config(wi, tmp_path)
-    config = make_config(import_dir=str(import_dir), backup=backup)
+    config = make_config(export_path=str(export_path), backup=backup)
+    backup_dir = tmp_path / "backup"
+
+    FrozenDatetime._now = datetime(2024, 1, 1, 12, 0, 0)
+    monkeypatch.setattr(wi, "datetime", FrozenDatetime)
+    wi.phase_backup(config)
+
+    assert "übersprungen" in capsys.readouterr().err
+    assert not any(f.name.startswith("last_") for f in backup_dir.iterdir())
+
+
+def test_backup_failure_warns_no_abort(tmp_path, monkeypatch, capsys):
+    export_path = setup_export(tmp_path)
+    backup = make_backup_config(wi, tmp_path)
+    config = make_config(export_path=str(export_path), backup=backup)
 
     def boom(*a, **k):
-        raise OSError("copytree kaputt")
+        raise OSError("copy kaputt")
 
-    monkeypatch.setattr(wi.shutil, "copytree", boom)
+    monkeypatch.setattr(wi.shutil, "copy2", boom)
     FrozenDatetime._now = datetime(2024, 1, 1, 12, 0, 0)
     monkeypatch.setattr(wi, "datetime", FrozenDatetime)
     # Darf nicht abbrechen
@@ -98,5 +176,67 @@ def test_backup_failure_warns_no_abort(tmp_path, monkeypatch, capsys):
 
 
 def test_no_backup_config_noop(tmp_path):
-    config = make_config(import_dir=str(setup_import(tmp_path)), backup=None)
+    config = make_config(export_path=str(setup_export(tmp_path)), backup=None)
     wi.phase_backup(config)  # darf nichts tun / nicht crashen
+
+
+# ---------------------------------------------------------------------------
+# Remote-Backup (best effort, Einzeldateien per Fake-FTP)
+# ---------------------------------------------------------------------------
+
+
+class FakeFTP:
+    """Minimale FTP_TLS-Attrappe: merkt sich hochgeladene Dateien und mkd-Pfade."""
+
+    def __init__(self):
+        self.stored = []
+        self.made_dirs = []
+
+    def mkd(self, path):
+        self.made_dirs.append(path)
+
+    def storbinary(self, cmd, fh):
+        self.stored.append(cmd.split(" ", 1)[1])
+
+    def quit(self):
+        pass
+
+
+def test_remote_backup_uploads_single_files(tmp_path, monkeypatch):
+    export_path = setup_export(tmp_path)
+    backup = make_backup_config(
+        wi, tmp_path, remote_backup_dir="/backup", archival_interval_days=0
+    )
+    config = make_config(password="geheim", export_path=str(export_path), backup=backup)
+
+    fake = FakeFTP()
+    monkeypatch.setattr(wi, "_ftps_connect", lambda *a, **k: fake)
+
+    run_backup_at(monkeypatch, config, datetime(2024, 1, 1, 12, 0, 0))
+
+    # Last- und Archival-Datei (Intervall 0 -> fällig) als Einzeldateien hochgeladen
+    assert "/backup/last_2024-01-01_12-00-00.json" in fake.stored
+    assert "/backup/archival_2024-01-01_12-00-00.json" in fake.stored
+    # Es wurden ausschließlich .json-Einzeldateien hochgeladen (keine Ordner)
+    assert all(p.endswith(".json") for p in fake.stored)
+
+
+def test_remote_backup_skipped_without_password(tmp_path, monkeypatch, capsys):
+    export_path = setup_export(tmp_path)
+    backup = make_backup_config(
+        wi, tmp_path, remote_backup_dir="/backup", archival_interval_days=0
+    )
+    config = make_config(password="", export_path=str(export_path), backup=backup)
+    monkeypatch.delenv("WEINSPRECHSTUNDE_DEPLOY_PASSWORD", raising=False)
+
+    fake = FakeFTP()
+    monkeypatch.setattr(wi, "_ftps_connect", lambda *a, **k: fake)
+
+    run_backup_at(monkeypatch, config, datetime(2024, 1, 1, 12, 0, 0))
+
+    # Ohne Passwort: Remote-Backup übersprungen, keine Uploads, kein Abbruch
+    assert fake.stored == []
+    assert "übersprungen" in capsys.readouterr().err
+    # Lokales Backup bleibt dennoch bestehen
+    backup_dir = tmp_path / "backup"
+    assert any(f.name.startswith("last_") for f in backup_dir.iterdir())

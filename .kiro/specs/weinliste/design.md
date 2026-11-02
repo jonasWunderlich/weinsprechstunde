@@ -31,7 +31,7 @@ weinsprechstunde2/
 │   ├── hash_password.py             ← Hilfsskript: Passwort hashen
 │   └── requirements.txt
 ├── import/                          ← Quelldaten (JSON + Bilder + Audio + Video)
-├── backup/                          ← lokale Backups (last_* + archival_* + .last_archival)
+├── backup/                          ← lokale wines.json-Backups (last_*.json + archival_*.json + .last_archival)
 ├── export/
 │   └── images/                      ← skalierte Exportbilder (generiert)
 ├── frontend/                        ← Angular SPA
@@ -50,7 +50,7 @@ weinsprechstunde2/
 ┌──────────────────────────────────────────────────────────────────────┐
 │  Build-Zeit (Python Import-Skript)                                   │
 │                                                                      │
-│  [Phase backup]  ─►  backup/last_*  +  backup/archival_*            │
+│  [Phase backup]  ─►  backup/last_*.json + backup/archival_*.json    │
 │       ↓                                                              │
 │  [optional] Remote-Import-Download (FTPES)                           │
 │       ↓                                                              │
@@ -89,7 +89,7 @@ weinsprechstunde2/
 
 ```mermaid
 graph TD
-    A[import/*.json + Bilder] -->|Phase backup| K[backup/last_* + archival_*]
+    C[export/data/wines.json] -->|Phase backup| K[backup/last_*.json + archival_*.json]
     A -->|Phase prepare| B[aufbereitete JSON-Dateien]
     B -->|Phase export| C[export/data/wines.json]
     B -->|Phase image-export| D[export/images/]
@@ -268,7 +268,7 @@ def resolve_password(config: Config) -> str:
 
 #### Phase `backup`
 
-Zwei-Tier-Backup-System: **Last-Backups** werden bei jedem Lauf erstellt und bewahren die letzten `max_last_backups` Builds. **Archival-Backups** werden nur erstellt, wenn mindestens `archival_interval_days` Tage seit dem letzten Archival vergangen sind, und bewahren die letzten `max_archival_backups` Snapshots. Der Zeitstempel des letzten Archival-Backups wird in `backup/.last_archival` gespeichert.
+Zwei-Tier-Backup-System: Gesichert wird ausschließlich die **exportierte `wines.json`** (`config.export_path`) als einzelne, zeitgestempelte Datei — NICHT der Import-Ordner und kein Ordner. **Last-Backups** (`last_<ts>.json`) werden bei jedem Lauf erstellt und bewahren die letzten `max_last_backups` Kopien. **Archival-Backups** (`archival_<ts>.json`) werden nur erstellt, wenn mindestens `archival_interval_days` Tage seit dem letzten Archival vergangen sind, und bewahren die letzten `max_archival_backups` Kopien. Der Zeitstempel des letzten Archival-Backups wird in der Marker-Datei `backup/.last_archival` gespeichert (die nie als Backup gewertet oder geprunt wird). Existiert `export_path` noch nicht (backup vor erstem `export`), wird mit Warnung übersprungen. Ist `remote_backup_dir` gesetzt, werden die erstellten Einzeldateien per FTPES hochgeladen (best effort, siehe `_remote_backup`).
 
 ```python
 from datetime import datetime, timedelta
@@ -284,13 +284,21 @@ def phase_backup(config: Config) -> None:
     backup_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
+    # Gesichert wird nur die exportierte wines.json als einzelne Datei.
+    export_path = Path(config.export_path)
+    suffix = export_path.suffix
+    if not export_path.exists():
+        sys.stderr.write(f"WARNUNG: Backup übersprungen – {export_path} existiert nicht.\n")
+        return
+
     # Last-Backup: bei jedem Lauf
-    last_name = f"last_{timestamp}"
+    last_name = f"last_{timestamp}{suffix}"
     last_path = backup_dir / last_name
     try:
-        shutil.copytree(config.import_dir, last_path)
+        shutil.copy2(export_path, last_path)
     except Exception as e:
         sys.stderr.write(f"WARNUNG: Last-Backup fehlgeschlagen: {e}\n")
+        last_name = None
 
     _prune_backups(backup_dir, prefix="last_", max_count=config.backup.max_last_backups)
 
@@ -304,10 +312,10 @@ def phase_backup(config: Config) -> None:
 
     archival_name = None
     if archival_due:
-        archival_name = f"archival_{timestamp}"
+        archival_name = f"archival_{timestamp}{suffix}"
         archival_path = backup_dir / archival_name
         try:
-            shutil.copytree(config.import_dir, archival_path)
+            shutil.copy2(export_path, archival_path)
             last_archival_path.write_text(datetime.now().isoformat())
         except Exception as e:
             sys.stderr.write(f"WARNUNG: Archival-Backup fehlgeschlagen: {e}\n")
@@ -315,21 +323,51 @@ def phase_backup(config: Config) -> None:
 
         _prune_backups(backup_dir, prefix="archival_", max_count=config.backup.max_archival_backups)
 
-    # Remote-Backups wenn konfiguriert
+    # Remote-Backups wenn konfiguriert (Einzeldateien per FTPES, best effort)
     if config.backup.remote_backup_dir and config.deploy:
-        _remote_backup(config, last_name, archival_name)
+        try:
+            _remote_backup(config, last_name, archival_name)
+        except Exception as e:
+            sys.stderr.write(f"WARNUNG: Remote-Backup fehlgeschlagen: {e}\n")
 
 def _prune_backups(backup_dir: Path, prefix: str, max_count: int) -> None:
-    """Älteste Backup-Ordner löschen wenn max_count überschritten."""
+    """Älteste Backup-Dateien löschen wenn max_count überschritten.
+
+    Backups sind Einzeldateien (last_*.json / archival_*.json); die
+    Marker-Datei .last_archival wird nie als Backup gewertet.
+    """
     entries = sorted(
-        [d for d in backup_dir.iterdir() if d.is_dir() and d.name.startswith(prefix)]
+        f for f in backup_dir.iterdir()
+        if f.is_file() and f.name.startswith(prefix) and f.name != LAST_ARCHIVAL_FILE
     )
     while len(entries) > max_count:
         oldest = entries.pop(0)
         try:
-            shutil.rmtree(oldest)
+            oldest.unlink()
         except Exception as e:
-            sys.stderr.write(f"WARNUNG: Backup-Ordner {oldest} konnte nicht gelöscht werden: {e}\n")
+            sys.stderr.write(f"WARNUNG: Backup-Datei {oldest} konnte nicht gelöscht werden: {e}\n")
+
+def _remote_backup(config, last_name, archival_name) -> None:
+    """Die lokalen Backup-DATEIEN best effort per FTPES hochladen.
+
+    Ohne Deploy-Passwort wird übersprungen (Warnung), ohne Abbruch.
+    """
+    remote_base = config.backup.remote_backup_dir
+    password = config.deploy.password or os.environ.get("WEINSPRECHSTUNDE_DEPLOY_PASSWORD", "")
+    if not password:
+        sys.stderr.write("WARNUNG: Remote-Backup übersprungen – kein Deploy-Passwort.\n")
+        return
+    backup_dir = Path(config.backup.backup_dir)
+    names = [n for n in (last_name, archival_name) if n]
+    if not names:
+        return
+    ftp = _ftps_connect(config.deploy.host, config.deploy.user, password)
+    try:
+        _ftp_makedirs(ftp, remote_base)
+        for name in names:
+            _upload_ftp(ftp, backup_dir / name, f"{remote_base.rstrip('/')}/{name}")
+    finally:
+        ftp.quit()
 ```
 
 ---
@@ -587,8 +625,9 @@ Deploy-Logik:
 - **Kein Pre-Deploy-Backup**: Es wird KEIN automatisches Pre-Deploy-Backup mehr
   erstellt (der Ziel-Webspace unterstützt keine serverseitige Kopie, und der
   Nutzer will den Live-Stand beim Deploy bewusst überschreiben). Der Inhalt von
-  `/wine_app` wird überschrieben; der bestehende Import-Backup-Mechanismus
-  (`_remote_backup`/`phase_backup`) bleibt davon unberührt.
+  `/wine_app` wird überschrieben; der Backup-Mechanismus der `wines.json`
+  (`_remote_backup`/`phase_backup`, nur Teil der backup-Phase) bleibt davon
+  unberührt.
 - **Deploy-Reihenfolge**: Upload des Build-Outputs → Prune (nur unter
   `/wine_app`) → `wines.json`/`wine-schema.json` nach `remote_import_path`
   (`/wine_app/data`) → Bilder nach `remote_images_path` (`/wine_app/images`).
@@ -1944,7 +1983,7 @@ export interface UserPreferences {
 
 ### Property 20: Last-Backup Rolling Window
 
-*For any* Sequenz von Pipeline-Läufen mit konfiguriertem `max_last_backups = N` und beliebigem `N ≥ 1`: Nach jedem Lauf darf die Anzahl der `last_`-Unterordner im `backup_dir` niemals größer als `N` sein.
+*For any* Sequenz von Pipeline-Läufen mit konfiguriertem `max_last_backups = N` und beliebigem `N ≥ 1`: Nach jedem Lauf darf die Anzahl der `last_*.json`-Dateien im `backup_dir` niemals größer als `N` sein (die Marker-Datei `.last_archival` zählt nicht).
 
 **Validates: Requirements 20.2, 20.3**
 
@@ -1994,7 +2033,7 @@ export interface UserPreferences {
 ### Python Import-Skript (pytest + hypothesis)
 
 - **Unit-Tests** mit temporären Verzeichnissen (`tmp_path`):
-  - `phase_backup`: Rolling Window für last_* und archival_*, Intervall-Prüfung
+  - `phase_backup`: Einzeldatei-Kopie der exportierten wines.json, Rolling Window für last_*.json und archival_*.json, Intervall-Prüfung, Remote-Upload (Fake-FTP)
   - `phase_prepare`: EXIF-Auslesen, Auto-detect image, Umbenennung, scaffold_mode
   - `phase_export`: Sortierung, Felderhaltung, Dateischreiben
   - `phase_image_export`: Skalierung, Timestamp-Check, Formaterhalt

@@ -19,6 +19,7 @@ dist/
 # Generierte Artefakte
 export/images/*
 !export/images/.gitkeep
+export/data/wines.json
 backup/*
 !backup/.gitkeep
 wordpress-mapping.json

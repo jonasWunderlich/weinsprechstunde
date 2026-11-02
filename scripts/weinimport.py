@@ -326,11 +326,23 @@ def phase_backup(config: Config) -> None:
     backup_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
+    # Gesichert wird ausschließlich die exportierte wines.json als einzelne
+    # Datei – nicht der Import-Ordner. Zielname trägt die Endung der Quelle.
+    export_path = Path(config.export_path)
+    suffix = export_path.suffix
+
+    if not export_path.exists():
+        sys.stderr.write(
+            f"WARNUNG: Backup übersprungen – Export-Datei {export_path} existiert "
+            "noch nicht (läuft backup vor dem ersten export?).\n"
+        )
+        return
+
     # Last-Backup: bei jedem Lauf
-    last_name: Optional[str] = f"last_{timestamp}"
+    last_name: Optional[str] = f"last_{timestamp}{suffix}"
     last_path = backup_dir / last_name
     try:
-        shutil.copytree(config.import_dir, last_path)
+        shutil.copy2(export_path, last_path)
     except Exception as e:
         sys.stderr.write(f"WARNUNG: Last-Backup fehlgeschlagen: {e}\n")
         last_name = None
@@ -347,10 +359,10 @@ def phase_backup(config: Config) -> None:
 
     archival_name: Optional[str] = None
     if archival_due:
-        archival_name = f"archival_{timestamp}"
+        archival_name = f"archival_{timestamp}{suffix}"
         archival_path = backup_dir / archival_name
         try:
-            shutil.copytree(config.import_dir, archival_path)
+            shutil.copy2(export_path, archival_path)
             last_archival_path.write_text(datetime.now().isoformat())
         except Exception as e:
             sys.stderr.write(f"WARNUNG: Archival-Backup fehlgeschlagen: {e}\n")
@@ -369,23 +381,29 @@ def phase_backup(config: Config) -> None:
 
 
 def _prune_backups(backup_dir: Path, prefix: str, max_count: int) -> None:
-    """Älteste Backup-Ordner löschen wenn max_count überschritten."""
+    """Älteste Backup-Dateien löschen wenn max_count überschritten.
+
+    Backups sind einzelne, zeitgestempelte Dateien (``last_*.json`` /
+    ``archival_*.json``). Die Marker-Datei (``.last_archival``) wird nie als
+    Backup gewertet; die zeitstempelbasierte lexikografische Sortierung bleibt.
+    """
     entries = sorted(
-        [d for d in backup_dir.iterdir() if d.is_dir() and d.name.startswith(prefix)]
+        f for f in backup_dir.iterdir()
+        if f.is_file() and f.name.startswith(prefix) and f.name != LAST_ARCHIVAL_FILE
     )
     while len(entries) > max_count:
         oldest = entries.pop(0)
         try:
-            shutil.rmtree(oldest)
+            oldest.unlink()
         except Exception as e:
             sys.stderr.write(
-                f"WARNUNG: Backup-Ordner {oldest} konnte nicht gelöscht werden: {e}\n"
+                f"WARNUNG: Backup-Datei {oldest} konnte nicht gelöscht werden: {e}\n"
             )
 
 
 def _remote_backup(config: Config, last_name: Optional[str],
                    archival_name: Optional[str]) -> None:
-    """Lokale Backup-Ordner auf den Webspace übertragen (best effort).
+    """Lokale Backup-Dateien auf den Webspace übertragen (best effort).
 
     Best effort bedeutet: Ist kein Deploy-Passwort verfügbar (z. B. bei einem
     rein lokalen Lauf ohne gesetzte Umgebungsvariable), wird das Remote-Backup
@@ -412,8 +430,9 @@ def _remote_backup(config: Config, last_name: Optional[str],
 
     ftp = _ftps_connect(config.deploy.host, config.deploy.user, password)
     try:
+        _ftp_makedirs(ftp, remote_base)
         for name in names:
-            _upload_dir_ftp(ftp, backup_dir / name, f"{remote_base.rstrip('/')}/{name}")
+            _upload_ftp(ftp, backup_dir / name, f"{remote_base.rstrip('/')}/{name}")
     finally:
         ftp.quit()
 
@@ -427,16 +446,6 @@ def _ftp_makedirs(ftp: "ftplib.FTP", remote_dir: str) -> None:
             ftp.mkd(path)
         except ftplib.error_perm:
             pass
-
-
-def _upload_dir_ftp(ftp: "ftplib.FTP", local_dir: Path, remote_dir: str) -> None:
-    _ftp_makedirs(ftp, remote_dir)
-    for item in local_dir.iterdir():
-        remote_item = f"{remote_dir.rstrip('/')}/{item.name}"
-        if item.is_dir():
-            _upload_dir_ftp(ftp, item, remote_item)
-        else:
-            _upload_ftp(ftp, item, remote_item)
 
 
 # ---------------------------------------------------------------------------
