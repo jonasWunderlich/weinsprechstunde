@@ -1,0 +1,11 @@
+{
+  "verdict": "APPROVED",
+  "findings": [
+    {
+      "severity": "info",
+      "detail": "export/data/wines.json wird vom export-Lauf erzeugt, ist aber nicht in .gitignore eingetragen (nur export/images/* ist ignoriert). export/data/wine-schema.json ist bewusst getrackt; die generierte wines.json liegt aktuell weder auf der Platte noch im Index, daher kein aktueller Fehler. Empfehlung (optional, ausserhalb des Auftragsscopes): export/data/wines.json ignorieren, damit ein kuenftiger Pipeline-Lauf sie nicht versehentlich committet. FEAT-002 hat dies bewusst als scope-fremd offengelassen.",
+      "file": ".gitignore"
+    }
+  ],
+  "summary": "Alle Auftragsvorgaben erfuellt. FTPES ist einziges Protokoll (_ftps_connect via FTP_TLS; SFTP/paramiko vollstaendig entfernt, auch aus requirements.txt). Kein Pre-Deploy-Backup mehr (gesamter Predeploy-/SSH-Pfad entfernt; Spec 6.15 nur noch 'kein Backup', alte 6.15-6.18 geloescht). Deploy-Ziele /wine_app, Bilder /wine_app/images, wines.json+wine-schema.json /wine_app/data; Reihenfolge Upload->Prune->data->images. Prune laeuft ausschliesslich unter /wine_app und schuetzt per _protected_prefixes images/ + data/ (Prefixe) und wines.json (exakt); durch dedizierte Tests belegt. Secrets aus weinsprechstunde.config.json ausgelagert, Aufloesung strikt Config>Secrets-Datei>Env fuer host/user/password (HOST/USER/PASSWORD Env-Vars), inkl. 5 Secrets-Tests. Frontend strikt entkoppelt: production-assets nur favicon, WineDataService laedt data/wines.json + data/wine-schema.json, base-href '/'; aufgezeichnete Build-Checks bestaetigen dist ohne images/ und ohne assets/wines.json. deploy/htaccess-webroot.txt ist versioniert, transparenter interner Rewrite nach /wine_app, nicht vom Deploy-Skript referenziert; README dokumentiert den manuellen Upload. deploy.yml setzt HOST/USER/PASSWORD aus Secrets. Spec (requirements.md+design.md) konsistent zum Code; keine aktiven SFTP-/paramiko-/Pre-Deploy-Aussagen mehr. Aufgezeichnete Evidenz (pytest 103 passed, ng test 69 passed, Build-Output-Checks) deckt sich mit dem gelesenen Code. Einziger nicht-blockierender Hinweis: export/data/wines.json ist nicht gitignored (ausserhalb des Auftragsscopes)."
+}

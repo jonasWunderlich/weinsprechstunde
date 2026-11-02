@@ -1,0 +1,7 @@
+{
+  "task_id": "task-ftpes-deploy-rewrite",
+  "task_description": "Deploy-Pipeline auf FTPES umstellen (SFTP/paramiko + Pre-Deploy-Backup entfernen), Secrets aus der Config in Secrets-Datei/Env auslagern, Deploy-Ziele nach /wine_app verlagern, das Angular-Frontend strikt von wines.json/wine-schema.json/Bildern entkoppeln (Option B: Laufzeit-Laden aus data//images/, nichts gebündelt), versionierte Root-.htaccess ablegen, CI-Env ergaenzen und die Spec (requirements.md/design.md) konsistent nachziehen. Verifikation nur lokal (Fake-FTP, pytest, ng test, ng build). Kein echter Deploy, kein Netzwerk.",
+  "status": "pending",
+  "feature_order": ["FEAT-001", "FEAT-002", "FEAT-003"],
+  "blocked_reason": null
+}

@@ -1,0 +1,10 @@
+{
+  "verdict": "APPROVED",
+  "findings": [
+    "FTP SITE CPFR/CPTO dependency: FTP server-side copy only works where the server offers the non-standard SITE CPFR/SITE CPTO extension; fails closed (no prune) otherwise. Documented in design.md; confirm the target FTP server supports it before relying on the FTP path. (likely, non-blocking)",
+    "_ssh_exec read ordering: reads full stdout before stderr; with real paramiko large output could fill the channel buffer and deadlock. Fine for the small cp/ls/rm output here. (possible, non-blocking)",
+    "Empty-server case no longer tested: the old empty-server tests (SFTP and FTP) were removed with the download variant and not replaced, yet Req 6.16 still mandates an empty server is not an error. Add a test. (likely test gap, non-blocking)",
+    "FTP copy is non-atomic and relies on cwd probing: _ftp_server_copy_dir issues SITE CPFR then SITE CPTO as two stateful commands and detects directories via cwd round-trips; less robust than the SSH cp -a. Acceptable given the documented limitation. (possible, non-blocking)"
+  ],
+  "reviewDoc": "/Users/za_jonas/repos/weinsprechstunde2/.agents/tasks/deploy-predeploy-backup-review.md"
+}

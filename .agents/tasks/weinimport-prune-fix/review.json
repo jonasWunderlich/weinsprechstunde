@@ -1,0 +1,18 @@
+{
+  "verdict": "APPROVED",
+  "findings": [
+    {
+      "label": "Leere image-export-Zusammenfassung",
+      "severity": "minor",
+      "confidence": "confirmed",
+      "detail": "phase_image_export schreibt die Zusammenfassungszeile auch bei 0 skaliert / 0 übersprungen / 0 fehlend. Harmlos; optional bei allen Zählern 0 unterdrücken."
+    },
+    {
+      "label": "--force-images parser-weit",
+      "severity": "minor",
+      "confidence": "confirmed",
+      "detail": "Das Flag hängt am Hauptparser und wird von prepare/export/image-export klaglos akzeptiert, aber ignoriert. Im Help-Text als deploy-only dokumentiert; keine Aktion nötig."
+    }
+  ],
+  "reviewDoc": "/Users/za_jonas/repos/weinsprechstunde2/.agents/tasks/weinimport-prune-fix/review.md"
+}

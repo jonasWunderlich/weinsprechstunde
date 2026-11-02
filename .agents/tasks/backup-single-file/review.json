@@ -1,0 +1,8 @@
+{
+  "verdict": "APPROVED",
+  "findings": [
+    "Backup hinkt einen Lauf hinterher: phase_backup läuft in der Full-Pipeline vor phase_export, sichert also den vorherigen Export; der erste Lauf auf frischem Checkout sichert nichts. Spec-konform (Req 20.1/20.10), aber mit dem Nutzer bestätigen, falls 'aktueller Stand' gemeint war.",
+    "Suffix-Annahme an Quelldatei gebunden: der Zielname erbt export_path.suffix; bei leerem/anderem Suffix bräche die .json-Namenskonvention und potenziell die Sortier-Homogenität im Prune. Aktuell unkritisch, da export_path fix wines.json ist."
+  ],
+  "reviewDoc": "/Users/za_jonas/repos/weinsprechstunde2/.agents/tasks/backup-single-file/review.md"
+}

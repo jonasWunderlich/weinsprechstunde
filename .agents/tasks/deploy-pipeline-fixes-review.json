@@ -1,0 +1,21 @@
+{
+  "verdict": "APPROVED",
+  "findings": [
+    {
+      "label": "Snapshot is post-upload, not pristine",
+      "confidence": "confirmed",
+      "severity": "informational",
+      "detail": "The pre-deploy backup downloads remote_path after the dist upload step, so the snapshot captures the server with newly uploaded files already in place. This is harmless for the fail-closed guarantee (it still runs before the destructive prune) and matches the task's 'VOR dem Prune' wording. Flagged only so a future restore-from-backup isn't assumed to be the untouched pre-deploy state. No change required."
+    }
+  ],
+  "priorFindingsResolved": [
+    "Backup re-implemented as recursive local download into backup.backup_dir/predeploy-<ts>/ (was server-side cp -a).",
+    "Specs (requirements.md Req 15-18, design.md deploy section) rewritten to the local-download wording, consistent with the code and task.",
+    "FTP pre-deploy backup implemented via recursive download; the prior unconditional FTP abort is gone.",
+    "Backup failures raise a distinct PreDeployBackupError with a dedicated 'Prune übersprungen' message instead of the generic connection-failure text.",
+    "FTP deploy now has test coverage (download-before-prune and fail-closed abort).",
+    "Server-side 'cp -a ... || true' error-masking removed along with the server-side backup helpers."
+  ],
+  "verificationNotes": "Confirmed ordering (backup before prune) in both _deploy_sftp and _deploy_ftp; fail-closed path (PreDeployBackupError -> exit 1, no prune) for SFTP and FTP; empty-server tolerance; separation from _remote_backup/phase_backup (remote_backup_dir untouched); retention keeps newest 5 locally. Commit message reports 104 passed with fake SFTP/FTP clients, no network. Test suite not re-run per instruction.",
+  "reviewDoc": "/Users/za_jonas/repos/weinsprechstunde2/.agents/tasks/deploy-pipeline-fixes-review.md"
+}
