@@ -250,6 +250,33 @@ def resolve_password(config: Config) -> str:
 # ---------------------------------------------------------------------------
 
 
+class _ReuseTLS_FTP(ftplib.FTP_TLS):
+    """FTP_TLS, das die Kontroll-TLS-Session auf dem Datenkanal wiederverwendet.
+
+    Pure-FTPd (Host Europe) verlangt, dass die Datenverbindung dieselbe
+    TLS-Session wie der Kontrollkanal benutzt. Pythons Standard-``FTP_TLS`` tut
+    das NICHT, weshalb der Datentransfer (Prune-Listing/Upload/Download) gegen
+    den Produktivserver hängt. Dieses Override reicht die TLS-Session des
+    Kontrollkanals an den Datenkanal weiter und behebt die Blockade.
+
+    Verifiziert gegen den echten Server via scripts/ftps_upload_probe.py.
+    """
+
+    def ntransfercmd(self, cmd, rest=None):  # noqa: D102 (ftplib-Signatur)
+        conn, size = ftplib.FTP.ntransfercmd(self, cmd, rest)
+        # Nur wenn der Datenkanal verschlüsselt ist (prot_p) und der
+        # Kontroll-Socket tatsächlich eine via SSLContext aufgebaute Session
+        # trägt, die Session auf dem Datenkanal wiederverwenden. Fehlt die
+        # Session (z. B. kein SSLSocket), bleibt es beim Standardverhalten.
+        if self._prot_p:
+            session = getattr(self.sock, "session", None)
+            if session is not None:
+                conn = self.context.wrap_socket(
+                    conn, server_hostname=self.host, session=session
+                )
+        return conn, size
+
+
 def _ftps_connect(host: str, user: str, password: str) -> "ftplib.FTP_TLS":
     """FTP-Verbindung mit explizitem TLS (FTPES) öffnen und einloggen.
 
@@ -258,10 +285,13 @@ def _ftps_connect(host: str, user: str, password: str) -> "ftplib.FTP_TLS":
     ein Zertifikat mit abweichendem Hostnamen ausliefert; die Verbindung bleibt
     dennoch TLS-verschlüsselt. Mit ``FTPS_VERIFY=1`` lässt sich die reguläre
     Zertifikatsprüfung aktivieren.
+
+    Verwendet ``_ReuseTLS_FTP``, damit der Datenkanal die TLS-Session des
+    Kontrollkanals wiederverwendet (Pflicht für Pure-FTPd/Host Europe).
     """
     verify = os.environ.get("FTPS_VERIFY", "0") != "0"
     ctx = ssl.create_default_context() if verify else ssl._create_unverified_context()
-    ftp = ftplib.FTP_TLS(context=ctx)
+    ftp = _ReuseTLS_FTP(context=ctx)
     ftp.connect(host, 21, timeout=20)
     ftp.auth()                 # explizites TLS auf dem Kontrollkanal
     ftp.login(user, password)  # Login über verschlüsselte Verbindung

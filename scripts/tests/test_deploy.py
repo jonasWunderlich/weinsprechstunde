@@ -368,3 +368,82 @@ def test_download_remote_import_error_exits(monkeypatch, capsys):
     assert "Download des Import-Ordners" in err
     assert config.deploy.remote_import_path in err
     assert "connection refused" in err
+
+
+# --- TLS-Session-Reuse auf dem Datenkanal ---------------------------------
+
+
+def test_ftps_connection_class_overrides_ntransfercmd():
+    """_ftps_connect nutzt eine FTP_TLS-Subklasse, die ntransfercmd überschreibt
+    (Voraussetzung für den TLS-Session-Reuse gegen Pure-FTPd)."""
+    import ftplib
+
+    assert issubclass(wi._ReuseTLS_FTP, ftplib.FTP_TLS)
+    # Das Override liegt auf der Subklasse selbst, nicht geerbt von FTP_TLS.
+    assert "ntransfercmd" in vars(wi._ReuseTLS_FTP)
+
+
+def test_ntransfercmd_reuses_control_session_on_data_channel(monkeypatch):
+    """Im prot_p-Fall wird die Kontroll-TLS-Session auf dem Datenkanal
+    wiederverwendet: context.wrap_socket wird mit session=<Kontroll-Session>
+    aufgerufen."""
+    import ftplib
+
+    ftp = wi._ReuseTLS_FTP.__new__(wi._ReuseTLS_FTP)
+    ftp._prot_p = True
+    ftp.host = "example.test"
+
+    control_session = object()
+    raw_data_conn = object()
+    wrapped_data_conn = object()
+
+    class FakeControlSock:
+        session = control_session
+
+    class FakeContext:
+        def __init__(self):
+            self.calls = []
+
+        def wrap_socket(self, sock, server_hostname=None, session=None):
+            self.calls.append((sock, server_hostname, session))
+            return wrapped_data_conn
+
+    ftp.sock = FakeControlSock()
+    ftp.context = FakeContext()
+
+    # Basis-ntransfercmd liefert einen rohen (unverschlüsselten) Datenkanal.
+    monkeypatch.setattr(ftplib.FTP, "ntransfercmd",
+                        lambda self, cmd, rest=None: (raw_data_conn, 123))
+
+    conn, size = ftp.ntransfercmd("RETR foo")
+
+    assert size == 123
+    # Datenkanal wurde neu gewrappt -> Session-Reuse aktiv.
+    assert conn is wrapped_data_conn
+    assert ftp.context.calls == [(raw_data_conn, "example.test", control_session)]
+
+
+def test_ntransfercmd_no_reuse_when_not_prot_p(monkeypatch):
+    """Ohne prot_p bleibt es beim Standardverhalten (kein erneutes wrap_socket)."""
+    import ftplib
+
+    ftp = wi._ReuseTLS_FTP.__new__(wi._ReuseTLS_FTP)
+    ftp._prot_p = False
+    ftp.host = "example.test"
+    raw_data_conn = object()
+
+    class FakeContext:
+        def __init__(self):
+            self.calls = []
+
+        def wrap_socket(self, *a, **k):
+            self.calls.append((a, k))
+            return object()
+
+    ftp.context = FakeContext()
+    monkeypatch.setattr(ftplib.FTP, "ntransfercmd",
+                        lambda self, cmd, rest=None: (raw_data_conn, 0))
+
+    conn, _ = ftp.ntransfercmd("LIST")
+    assert conn is raw_data_conn
+    assert ftp.context.calls == []

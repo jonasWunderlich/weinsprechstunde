@@ -613,6 +613,19 @@ die Upload-/Prune-/Download-Helfer (`_upload_ftp`, `_ftp_makedirs`,
 `_ftp_prune`, `_ftp_is_dir`, `_ftp_up_to_date`, `_ftp_download_dir`)
 unverändert auf dem übergebenen Verbindungsobjekt.
 
+**TLS-Session-Reuse auf dem Datenkanal**: `_ftps_connect` instanziert nicht
+direkt `ftplib.FTP_TLS`, sondern die Subklasse `_ReuseTLS_FTP`, die
+`ntransfercmd` überschreibt. Sie wrappt den Datenkanal-Socket mit der
+TLS-Session des Kontrollkanals (`self.sock.session`). Das ist für Pure-FTPd
+(Host Europe) zwingend nötig: Der Server verlangt, dass die Datenverbindung
+dieselbe TLS-Session wie der Kontrollkanal wiederverwendet, sonst blockiert er
+den Datentransfer (Prune-Listing/Upload/Download hängen). Pythons
+Standard-`FTP_TLS` tut das nicht. Der Reuse greift nur im `prot_p`-Fall und nur,
+wenn der Kontroll-Socket eine Session trägt; andernfalls bleibt es beim
+Standardverhalten. Da alle FTPES-Transfers (Deploy-Upload, Prune-Listing,
+Remote-Import-Download, Remote-Backup-Upload) über `_ftps_connect` laufen,
+profitieren sie alle automatisch.
+
 Deploy-Logik:
 - **Build-Wurzel**: Nicht `frontend/dist` als Wurzel nehmen, sondern das
   tatsächliche Browser-Build-Verzeichnis auflösen (`_resolve_dist_dir`). Der
