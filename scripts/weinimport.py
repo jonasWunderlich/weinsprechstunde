@@ -74,6 +74,9 @@ class BackupConfig:
     max_archival_backups: int
     archival_interval_days: int
     remote_backup_dir: Optional[str] = None
+    # Optionales Feld: wie viele serverseitige Pre-Deploy-Backups unter
+    # remote_backup_dir aufbewahrt werden. None -> Default MAX_PREDEPLOY_BACKUPS.
+    max_predeploy_backups: Optional[int] = None
 
 
 @dataclass
@@ -733,10 +736,12 @@ def phase_deploy(config: Config) -> None:
         sys.exit(1)
 
 
-# Anzahl lokaler Pre-Deploy-Backups, die unter backup.backup_dir aufbewahrt
-# werden. Dieses Deployment-Backup ist getrennt vom lokalen Import-Backup-
-# Mechanismus (max_last_backups/max_archival_backups) und hat bewusst ein
-# eigenes, kleines Rolling-Window.
+# Anzahl serverseitiger Pre-Deploy-Backups, die unter
+# backup.remote_backup_dir aufbewahrt werden. Dieses Deployment-Backup ist
+# getrennt vom lokalen Import-Backup-Mechanismus (max_last_backups/
+# max_archival_backups) und hat bewusst ein eigenes, kleines Rolling-Window.
+# Per optionalem Config-Feld backup.max_predeploy_backups überschreibbar,
+# funktioniert aber ohne Config-Änderung mit diesem Default.
 MAX_PREDEPLOY_BACKUPS = 5
 
 
@@ -770,85 +775,219 @@ def _resolve_dist_dir(base: Path = Path("frontend/dist")) -> Path:
     return base
 
 
-def _predeploy_backup_target(config: Config) -> Path:
-    """Zeitgestempelten Zielordner für das lokale Pre-Deploy-Backup ermitteln.
+def _predeploy_remote_backup_dir(config: Config) -> tuple[str, str]:
+    """Serverseitiges Backup-Ziel ermitteln: (remote_backup_base, predeploy_name).
 
-    Das Backup landet unter ``backup.backup_dir/predeploy-<YYYYmmdd-HHMMSS>/``.
-    Fehlt die Backup-Konfiguration (``config.backup``) komplett, ist kein
-    lokaler Zielordner definiert – das ist ein harter Fehler, denn ohne Backup
-    darf der nachfolgende Prune nicht laufen.
+    Das Backup landet serverseitig unter
+    ``<remote_backup_dir>/predeploy-<YYYYmmdd-HHMMSS>/`` – die Daten bleiben auf
+    dem Server, laufen NICHT über den lokalen Rechner. Fehlt die Backup-
+    Konfiguration (``config.backup``) oder ``remote_backup_dir``, ist kein Ziel
+    definiert – das ist ein harter Fehler, denn ohne Backup darf der
+    nachfolgende Prune nicht laufen.
     """
-    if not config.backup:
+    if not config.backup or not config.backup.remote_backup_dir:
         raise PreDeployBackupError(
-            "backup-Konfiguration fehlt (config.backup). Ohne lokalen "
-            "Backup-Zielordner darf nicht geprunt werden."
+            "backup.remote_backup_dir fehlt. Ohne serverseitiges Backup-Ziel "
+            "darf nicht geprunt werden."
         )
-    backup_dir = Path(config.backup.backup_dir)
+    remote_base = config.backup.remote_backup_dir.rstrip("/")
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    return backup_dir / f"predeploy-{timestamp}"
+    return remote_base, f"predeploy-{timestamp}"
 
 
-def _predeploy_local_backup_sftp(sftp, config: Config, remote_base: str) -> None:
-    """Pre-Deploy-Backup: remote_path per SFTP lokal herunterladen (vor Prune).
+def _max_predeploy_backups(config: Config) -> int:
+    """Aufzubewahrende Pre-Deploy-Backups: Config-Override oder Default 5."""
+    if config.backup and config.backup.max_predeploy_backups is not None:
+        return config.backup.max_predeploy_backups
+    return MAX_PREDEPLOY_BACKUPS
 
-    Lädt den aktuellen Zustand von ``remote_path`` rekursiv in einen
-    zeitgestempelten Unterordner ``backup.backup_dir/predeploy-<ts>/`` – also
-    auf den lokalen Rechner, wie in der Aufgabe verlangt. Dieses Live-Backup ist
-    getrennt vom bestehenden Import-Backup (``_remote_backup``/``phase_backup``).
 
-    Fehlertoleranz: Ein leerer Server (keine Einträge) ist in Ordnung und erzeugt
-    lediglich einen leeren Backup-Ordner. Schlägt das Backup jedoch grundsätzlich
-    fehl (z. B. Verbindungs-/IO-Problem), wird eine ``PreDeployBackupError``
-    geworfen, damit der Deploy NICHT weiterläuft und prunt – lieber sauber
-    scheitern, bevor auf dem Server gelöscht wird.
+def _predeploy_server_backup_sftp(transport, sftp, config: Config,
+                                  remote_path: str) -> None:
+    """Pre-Deploy-Backup: remote_path serverseitig kopieren (vor Prune).
+
+    Kopiert den aktuellen Zustand von ``remote_path`` rekursiv (wie ``cp -a``)
+    in einen zeitgestempelten Unterordner
+    ``<remote_backup_dir>/predeploy-<ts>/`` – die Daten bleiben auf dem Server
+    und laufen NICHT durch den lokalen Rechner. Umgesetzt per SSH-Exec über
+    denselben paramiko-Transport (SFTP kennt keinen nativen rekursiven
+    Server-Copy). Dieses Backup ist getrennt vom Import-Backup
+    (``_remote_backup``/``phase_backup``).
+
+    Fehlertoleranz: Schlägt das Backup grundsätzlich fehl (Exec-/Verbindungs-
+    fehler oder von der Shell gemeldeter Fehler), wird eine
+    ``PreDeployBackupError`` geworfen, damit der Deploy NICHT weiterläuft und
+    prunt – lieber sauber scheitern, bevor auf dem Server gelöscht wird.
     """
-    target = _predeploy_backup_target(config)
+    remote_base, name = _predeploy_remote_backup_dir(config)
+    target = f"{remote_base}/{name}"
     try:
-        target.mkdir(parents=True, exist_ok=True)
-        _sftp_download_dir(sftp, remote_base, target)
+        _ssh_exec(
+            transport,
+            f"mkdir -p {_shq(target)} && "
+            f"cp -a {_shq(remote_path.rstrip('/'))}/. {_shq(target)}/",
+        )
     except Exception as e:
         raise PreDeployBackupError(str(e)) from e
-    _prune_predeploy_backups_local(Path(config.backup.backup_dir))
+    _prune_predeploy_backups_server(transport, remote_base,
+                                    _max_predeploy_backups(config))
 
 
-def _predeploy_local_backup_ftp(ftp, config: Config, remote_base: str) -> None:
-    """Pre-Deploy-Backup: remote_path per FTP lokal herunterladen (vor Prune).
+def _predeploy_server_backup_ftp(ftp, config: Config, remote_path: str) -> None:
+    """Pre-Deploy-Backup serverseitig über FTP (vor Prune).
 
-    Identisches Verhalten wie die SFTP-Variante, nur über plain FTP. Damit gilt
-    das geforderte Pre-Deploy-Backup für SFTP UND FTP. Fail-closed: bei einem
-    grundsätzlichen Fehler wird abgebrochen, bevor geprunt wird.
+    FTP kennt weder SSH-Exec noch einen nativen rekursiven Server-Copy. Diese
+    Variante bleibt dennoch server-seitig: Sie kopiert jede Datei unter
+    ``remote_path`` serverseitig per ``RNFR``/``RNTO`` ist NICHT möglich (das
+    verschiebt statt zu kopieren), daher wird – wo der FTP-Server die
+    SITE-COPY-/Kopier-Erweiterung bietet – ``SITE CPTO`` verwendet; andernfalls
+    ist eine reine serverseitige Kopie über Standard-FTP nicht möglich.
+
+    Umsetzung: Für jede Datei unter ``remote_path`` wird versucht, sie
+    serverseitig in das zeitgestempelte Ziel zu kopieren, ohne die Daten lokal
+    zwischenzuspeichern. Scheitert dies grundsätzlich, wird eine
+    ``PreDeployBackupError`` geworfen und NICHT geprunt (fail-closed).
     """
-    target = _predeploy_backup_target(config)
+    remote_base, name = _predeploy_remote_backup_dir(config)
+    target = f"{remote_base}/{name}"
     try:
-        target.mkdir(parents=True, exist_ok=True)
-        _ftp_download_dir(ftp, remote_base, target)
+        _ftp_makedirs(ftp, target)
+        _ftp_server_copy_dir(ftp, remote_path.rstrip("/"), target)
     except Exception as e:
         raise PreDeployBackupError(str(e)) from e
-    _prune_predeploy_backups_local(Path(config.backup.backup_dir))
+    _prune_predeploy_backups_server_ftp(ftp, remote_base,
+                                        _max_predeploy_backups(config))
 
 
-def _prune_predeploy_backups_local(backup_dir: Path) -> None:
-    """Nur die neuesten MAX_PREDEPLOY_BACKUPS predeploy-Ordner lokal behalten.
+def _shq(path: str) -> str:
+    """Pfad fürs Shell-Exec sicher quoten (einfache Anführungszeichen)."""
+    return "'" + path.replace("'", "'\\''") + "'"
+
+
+def _ssh_exec(transport, command: str) -> str:
+    """Kommando über eine SSH-Exec-Session auf dem Server ausführen.
+
+    Nutzt denselben paramiko-Transport wie die SFTP-Verbindung. Wirft bei einem
+    Exit-Status != 0 eine Exception mit stderr-Inhalt, damit der Aufrufer ein
+    gescheitertes serverseitiges Backup erkennt.
+    """
+    channel = transport.open_session()
+    try:
+        channel.exec_command(command)
+        stdout = channel.makefile("rb").read()
+        stderr = channel.makefile_stderr("rb").read()
+        status = channel.recv_exit_status()
+    finally:
+        channel.close()
+    if status != 0:
+        msg = stderr.decode(errors="replace").strip() or f"exit status {status}"
+        raise RuntimeError(f"SSH-Exec fehlgeschlagen ({command!r}): {msg}")
+    return stdout.decode(errors="replace")
+
+
+def _ftp_server_copy_dir(ftp, remote_src: str, remote_dst: str) -> None:
+    """Verzeichnis serverseitig per FTP kopieren (ohne lokalen Umweg).
+
+    Rekursiv über ``remote_src``; Dateien werden per ``SITE CPTO`` (sofern vom
+    Server unterstützt) serverseitig dupliziert. Unterstützt der Server keine
+    serverseitige Kopie, schlägt ``sendcmd`` fehl und die Exception propagiert
+    nach oben (fail-closed, kein Prune).
+    """
+    _ftp_makedirs(ftp, remote_dst)
+    for name in ftp.nlst(remote_src):
+        base = name.rsplit("/", 1)[-1]
+        if base in (".", ".."):
+            continue
+        src_entry = name if "/" in name else f"{remote_src.rstrip('/')}/{name}"
+        dst_entry = f"{remote_dst.rstrip('/')}/{base}"
+        if _ftp_is_dir(ftp, src_entry):
+            _ftp_server_copy_dir(ftp, src_entry, dst_entry)
+        else:
+            # Serverseitige Kopie: SITE CPFR/CPTO (ProFTPD mod_copy). Bleibt
+            # vollständig auf dem Server – keine RETR/STOR über den Client.
+            ftp.sendcmd(f"SITE CPFR {src_entry}")
+            ftp.sendcmd(f"SITE CPTO {dst_entry}")
+
+
+def _prune_predeploy_backups_server(transport, remote_base: str,
+                                    max_count: int) -> None:
+    """Nur die neuesten max_count predeploy-Ordner serverseitig behalten.
 
     Die predeploy-Ordner sind zeitstempel-benannt, daher ergibt lexikografisches
-    Sortieren die chronologische Reihenfolge. Die Löschung ist best effort:
-    Fehler hier dürfen den bereits erfolgten Deploy/Backup nicht scheitern lassen.
+    Sortieren die chronologische Reihenfolge. Löschung per SSH-Exec; best effort:
+    Fehler hier dürfen das bereits erfolgte Backup nicht scheitern lassen.
     """
-    if not backup_dir.exists():
+    try:
+        listing = _ssh_exec(
+            transport,
+            f"ls -1 {_shq(remote_base)} 2>/dev/null || true",
+        )
+    except Exception as e:
+        sys.stderr.write(
+            f"WARNUNG: Pre-Deploy-Backup-Retention übersprungen "
+            f"(Listing fehlgeschlagen): {e}\n"
+        )
         return
     entries = sorted(
-        d for d in backup_dir.iterdir()
-        if d.is_dir() and d.name.startswith("predeploy-")
+        line.strip() for line in listing.splitlines()
+        if line.strip().startswith("predeploy-")
     )
-    while len(entries) > MAX_PREDEPLOY_BACKUPS:
+    while len(entries) > max_count:
         oldest = entries.pop(0)
+        path = f"{remote_base.rstrip('/')}/{oldest}"
         try:
-            shutil.rmtree(oldest)
+            _ssh_exec(transport, f"rm -rf {_shq(path)}")
         except Exception as e:
             sys.stderr.write(
-                f"WARNUNG: Pre-Deploy-Backup {oldest} konnte nicht gelöscht "
+                f"WARNUNG: Pre-Deploy-Backup {path} konnte nicht gelöscht "
                 f"werden: {e}\n"
             )
+
+
+def _prune_predeploy_backups_server_ftp(ftp, remote_base: str,
+                                        max_count: int) -> None:
+    """Serverseitige Pre-Deploy-Backup-Retention über FTP.
+
+    Entfernt die ältesten ``predeploy-``Ordner unter ``remote_base``, sodass
+    maximal ``max_count`` erhalten bleiben. Best effort: Fehler hier dürfen das
+    bereits erfolgte Backup nicht scheitern lassen.
+    """
+    try:
+        names = ftp.nlst(remote_base)
+    except Exception as e:
+        sys.stderr.write(
+            f"WARNUNG: Pre-Deploy-Backup-Retention übersprungen "
+            f"(Listing fehlgeschlagen): {e}\n"
+        )
+        return
+    entries = sorted(
+        n.rsplit("/", 1)[-1] for n in names
+        if n.rsplit("/", 1)[-1].startswith("predeploy-")
+    )
+    while len(entries) > max_count:
+        oldest = entries.pop(0)
+        path = f"{remote_base.rstrip('/')}/{oldest}"
+        try:
+            _ftp_rmtree(ftp, path)
+        except Exception as e:
+            sys.stderr.write(
+                f"WARNUNG: Pre-Deploy-Backup {path} konnte nicht gelöscht "
+                f"werden: {e}\n"
+            )
+
+
+def _ftp_rmtree(ftp, remote_dir: str) -> None:
+    """Verzeichnis rekursiv per FTP löschen."""
+    for name in ftp.nlst(remote_dir):
+        base = name.rsplit("/", 1)[-1]
+        if base in (".", ".."):
+            continue
+        entry = name if "/" in name else f"{remote_dir.rstrip('/')}/{name}"
+        if _ftp_is_dir(ftp, entry):
+            _ftp_rmtree(ftp, entry)
+        else:
+            ftp.delete(entry)
+    ftp.rmd(remote_dir)
 
 
 def _local_dist_files(dist_dir: Path) -> dict[str, Path]:
@@ -908,10 +1047,11 @@ def _deploy_sftp(config: Config, password: str) -> None:
                 _upload_sftp(sftp, local_file, remote_file)
 
         # Pre-Deploy-Backup des aktuellen Server-Zustands VOR dem Prune:
-        # remote_path wird lokal nach backup_dir/predeploy-<ts>/ geladen.
+        # remote_path wird SERVERSEITIG nach
+        # remote_backup_dir/predeploy-<ts>/ kopiert (SSH-Exec, kein Download).
         # Schlägt es grundsätzlich fehl, propagiert die Exception und der Prune
         # läuft NICHT – wir löschen nie ohne vorheriges Backup.
-        _predeploy_local_backup_sftp(sftp, config, remote_base)
+        _predeploy_server_backup_sftp(transport, sftp, config, remote_base)
 
         # dist-Ordner: veraltete Serverdateien löschen (wines.json/Bilder NIE)
         exact, prefixes = _protected_prefixes(config)
@@ -995,11 +1135,11 @@ def _deploy_ftp(config: Config, password: str) -> None:
             if not _ftp_up_to_date(ftp, remote_file, local_file):
                 _upload_ftp(ftp, local_file, remote_file)
 
-        # Pre-Deploy-Backup VOR dem Prune: remote_path wird lokal nach
-        # backup_dir/predeploy-<ts>/ geladen (identisch zur SFTP-Variante).
-        # Fail-closed: Schlägt das Backup fehl, wird abgebrochen, bevor geprunt
-        # wird – es wird nie ohne vorheriges Backup gelöscht.
-        _predeploy_local_backup_ftp(ftp, config, remote_base)
+        # Pre-Deploy-Backup VOR dem Prune: remote_path wird SERVERSEITIG nach
+        # remote_backup_dir/predeploy-<ts>/ kopiert (SITE CPFR/CPTO, kein
+        # Download). Fail-closed: Schlägt das Backup fehl, wird abgebrochen,
+        # bevor geprunt wird – es wird nie ohne vorheriges Backup gelöscht.
+        _predeploy_server_backup_ftp(ftp, config, remote_base)
 
         exact, prefixes = _protected_prefixes(config)
         _ftp_prune(ftp, remote_base, set(local_files.keys()), exact, prefixes)

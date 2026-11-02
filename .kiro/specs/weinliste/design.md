@@ -580,30 +580,40 @@ Deploy-Logik:
   (Req 6.14). Ein klassischer flacher `dist`-Ordner (mit `index.html` direkt in
   `frontend/dist`) wird unverändert verwendet; Fallback bleibt `frontend/dist`.
   Identisch für SFTP und FTP.
-- **Pre-Deploy-Backup (lokaler Download)**: Zu Beginn der PhaseDeploy — nach
+- **Pre-Deploy-Backup (serverseitige Kopie)**: Zu Beginn der PhaseDeploy — nach
   Passwort-Auflösung und Verbindungsaufbau, aber VOR dem Prune — wird der
-  aktuelle Inhalt von `remote_path` rekursiv per SFTP/FTP auf den lokalen
-  Rechner heruntergeladen und unter
-  `<backup.backup_dir>/predeploy-<YYYYmmdd-HHMMSS>/` abgelegt
-  (`_predeploy_local_backup_sftp` / `_predeploy_local_backup_ftp`, gemeinsam über
-  `_sftp_download_dir`/`_ftp_download_dir`). So liegt ein Snapshot des
-  Serverzustands lokal vor, bevor der Prune etwas löscht (Req 6.15). Ein leerer
-  Server erzeugt nur einen leeren Backup-Ordner und ist kein Fehler (Req 6.16).
-  Schlägt das Backup grundsätzlich fehl (Download-/Verbindungsfehler oder
-  fehlende `backup`-Konfiguration), wird eine `PreDeployBackupError` geworfen;
-  `phase_deploy` fängt diese ab und bricht mit einer **eigenen** Meldung ab
-  („Pre-Deploy-Backup … fehlgeschlagen … Prune übersprungen"), NICHT mit der
-  generischen Verbindungsfehler-Meldung — der Prune läuft dann nicht (Req 6.16,
-  6.17). Dieses Live-Backup ist getrennt vom Import-Backup-Mechanismus
+  aktuelle Inhalt von `remote_path` **serverseitig** in einen zeitgestempelten
+  Unterordner `<backup.remote_backup_dir>/predeploy-<YYYYmmdd-HHMMSS>/` kopiert.
+  Die Daten bleiben auf dem Server und laufen NICHT über den lokalen Rechner;
+  es wird nichts in den lokalen `backup.backup_dir` geladen. Bei SFTP geschieht
+  die rekursive Kopie per SSH-Exec (`cp -a`) über denselben paramiko-Transport
+  (`_predeploy_server_backup_sftp` → `_ssh_exec`), da SFTP keinen nativen
+  rekursiven Server-Copy kennt. Bei FTP wird die serverseitige Kopie per
+  `SITE CPFR`/`SITE CPTO` (z. B. ProFTPD `mod_copy`) rekursiv ausgeführt
+  (`_predeploy_server_backup_ftp` → `_ftp_server_copy_dir`); unterstützt der
+  FTP-Server keine serverseitige Kopie, schlägt der Befehl fehl und das Backup
+  bricht fail-closed ab. So liegt ein Snapshot des Serverzustands auf dem
+  Server vor, bevor der Prune etwas löscht (Req 6.15). Ein leerer Server erzeugt
+  nur einen leeren Backup-Ordner und ist kein Fehler (Req 6.16). Schlägt das
+  Backup grundsätzlich fehl (Exec-/Verbindungsfehler oder fehlende
+  `backup`/`remote_backup_dir`-Konfiguration), wird eine `PreDeployBackupError`
+  geworfen; `phase_deploy` fängt diese ab und bricht mit einer **eigenen**
+  Meldung ab („Pre-Deploy-Backup … fehlgeschlagen … Prune übersprungen"), NICHT
+  mit der generischen Verbindungsfehler-Meldung — der Prune läuft dann nicht
+  (Req 6.16, 6.17). Dieses Backup ist getrennt vom Import-Backup-Mechanismus
   (`_remote_backup`/`phase_backup`) und lässt diesen unberührt.
-- **Retention Pre-Deploy-Backup**: Nach dem Download werden lokal die ältesten
-  `predeploy-`Ordner unter `backup.backup_dir` entfernt
-  (`_prune_predeploy_backups_local`), sodass maximal `MAX_PREDEPLOY_BACKUPS`
-  (Standard 5) erhalten bleiben — unabhängig von
-  `max_last_backups`/`max_archival_backups` (Req 6.18).
-- **SFTP und FTP identisch**: Da das Backup ein reiner rekursiver Download ist,
-  funktioniert es portabel über beide Protokolle; FTP wird nicht abgebrochen
-  (Req 6.18).
+- **Retention Pre-Deploy-Backup**: Nach dem Anlegen des neuen Ordners werden
+  **serverseitig** die ältesten `predeploy-`Ordner unter `remote_backup_dir`
+  entfernt (`_prune_predeploy_backups_server` per `rm -rf` über SSH-Exec bzw.
+  `_prune_predeploy_backups_server_ftp` per rekursivem FTP-Delete), sodass
+  maximal `MAX_PREDEPLOY_BACKUPS` (Standard 5) erhalten bleiben — unabhängig von
+  `max_last_backups`/`max_archival_backups`. Ein optionales Config-Feld
+  `backup.max_predeploy_backups` überschreibt den Default, funktioniert aber
+  ohne Config-Änderung mit 5 (Req 6.18).
+- **SFTP und FTP identisch im Verhalten**: Beide Protokolle legen serverseitig
+  ein zeitgestempeltes Pre-Deploy-Backup an und halten max. 5 Stück; nur der
+  verwendete Mechanismus unterscheidet sich (SSH-Exec `cp -a` vs.
+  `SITE CPFR`/`CPTO`) (Req 6.18).
 - Angular-dist-Ordner: veraltete Serverdateien löschen (via SFTP `listdir` / FTP `NLST`)
 - `wines.json` und Bilder aus `image_export_dir`: **niemals** auf dem Server löschen
 - Timestamp-Vergleich: SFTP via `stat().st_mtime`, FTP via `MDTM`

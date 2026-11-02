@@ -58,16 +58,11 @@ def test_connection_failure_exits_with_req_6_12_message(monkeypatch, capsys):
 
 
 class FakeSFTP:
-    def __init__(self, remote_mtimes=None, remote_listing=None,
-                 download_fail_on=None):
+    def __init__(self, remote_mtimes=None, remote_listing=None):
         self.uploaded = []
         self.removed = []
-        self.downloaded = []  # (remote, local) für Pre-Deploy-Backup
         self.remote_mtimes = remote_mtimes or {}
         self.remote_listing = remote_listing or {}
-        # Wenn gesetzt und ein zu ladender Remote-Pfad diesen Teilstring
-        # enthält, wirft get() -> simuliert ein fehlgeschlagenes Backup.
-        self.download_fail_on = download_fail_on
 
     def stat(self, path):
         if path in self.remote_mtimes:
@@ -82,15 +77,6 @@ class FakeSFTP:
 
     def put(self, local, remote):
         self.uploaded.append(remote)
-
-    def get(self, remote, local):
-        if self.download_fail_on and self.download_fail_on in remote:
-            raise IOError(f"download failed: {remote}")
-        self.downloaded.append((remote, local))
-        # Lokale Datei anlegen, damit der Backup-Ordner realistisch gefüllt ist.
-        from pathlib import Path as _P
-
-        _P(local).write_bytes(b"backup")
 
     def remove(self, path):
         self.removed.append(path)
@@ -110,8 +96,60 @@ class FakeEntry:
         self.st_mode = st.S_IFDIR if is_dir else st.S_IFREG
 
 
+class FakeChannel:
+    """Attrappe eines paramiko-Exec-Channels.
+
+    ``backup_fail`` lässt das serverseitige ``cp -a`` fehlschlagen (Exit != 0).
+    ``ls_output`` bestimmt, welche Einträge ``ls -1`` für die Retention liefert.
+    """
+
+    def __init__(self, parent, command):
+        self.parent = parent
+        self.command = command
+        self._status = 0
+        self._stdout = b""
+        self._stderr = b""
+
+    def exec_command(self, command):
+        self.command = command
+        self.parent.exec_commands.append(command)
+        if command.startswith("cp -a") or " && cp -a" in command:
+            if self.parent.backup_fail:
+                self._status = 1
+                self._stderr = b"cp: permission denied"
+        elif command.startswith("ls -1"):
+            self._stdout = ("\n".join(self.parent.ls_output) + "\n").encode()
+        elif command.startswith("rm -rf"):
+            self.parent.removed_dirs.append(command)
+
+    def makefile(self, _mode):
+        import io
+
+        return io.BytesIO(self._stdout)
+
+    def makefile_stderr(self, _mode):
+        import io
+
+        return io.BytesIO(self._stderr)
+
+    def recv_exit_status(self):
+        return self._status
+
+    def close(self):
+        pass
+
+
 class FakeTransport:
-    """Transport-Attrappe (nur close wird gebraucht)."""
+    """Transport-Attrappe: close + SSH-Exec-Sessions für serverseitiges Backup."""
+
+    def __init__(self, backup_fail=False, ls_output=None):
+        self.exec_commands = []
+        self.removed_dirs = []
+        self.backup_fail = backup_fail
+        self.ls_output = ls_output or []
+
+    def open_session(self):
+        return FakeChannel(self, "")
 
     def close(self):
         pass
@@ -126,7 +164,7 @@ def _patch_sftp(monkeypatch, fake, transport=None):
 
 
 def _backup_config():
-    """BackupConfig für lokale Pre-Deploy-Backups (backup_dir)."""
+    """BackupConfig für serverseitige Pre-Deploy-Backups (remote_backup_dir)."""
     return wi.BackupConfig(
         backup_dir="./backup",
         max_last_backups=10,
@@ -297,12 +335,12 @@ def test_resolve_dist_dir_flat_and_nested(tmp_path, monkeypatch):
     assert wi._resolve_dist_dir() == Path("frontend/dist/ng-weinsprechstunde/browser")
 
 
-# --- Aufgabe 2: lokales Pre-Deploy-Backup von remote_path vor dem Prune ------
+# --- Aufgabe 2: SERVERSEITIGES Pre-Deploy-Backup von remote_path vor Prune ---
 
 
-def test_predeploy_backup_downloads_remote_path_before_prune(tmp_path, monkeypatch):
-    """Vor dem Prune wird remote_path rekursiv in einen zeitgestempelten Ordner
-    unter backup.backup_dir (predeploy-<ts>/) heruntergeladen."""
+def test_predeploy_backup_copies_remote_path_server_side_before_prune(tmp_path, monkeypatch):
+    """Vor dem Prune wird remote_path SERVERSEITIG (cp -a per SSH-Exec) in einen
+    zeitgestempelten Ordner unter remote_backup_dir kopiert – kein Download."""
     monkeypatch.chdir(tmp_path)
     _make_dist(tmp_path)
 
@@ -313,35 +351,35 @@ def test_predeploy_backup_downloads_remote_path_before_prune(tmp_path, monkeypat
         image_export_dir=str(tmp_path / "export" / "images"),
         backup=_backup_config(),
     )
-    # Server hat zwei Dateien unter remote_path, die ins Backup geladen werden.
+    # Server hat zwei Dateien unter remote_path; old.js wird nach dem Backup geprunt.
     listing = {config.deploy.remote_path: [FakeEntry("index.html"), FakeEntry("old.js")]}
     fake = FakeSFTP(remote_listing=listing)
-    _patch_sftp(monkeypatch, fake)
+    transport = FakeTransport()
+    _patch_sftp(monkeypatch, fake, transport)
 
     wi.phase_deploy(config)
 
-    # Ein zeitgestempelter predeploy-Ordner wurde lokal unter backup_dir angelegt.
     import re
 
+    # Ein serverseitiges cp -a in einen zeitgestempelten predeploy-Ordner unter
+    # remote_backup_dir wurde ausgeführt.
+    cp_cmds = [c for c in transport.exec_commands if "cp -a" in c]
+    assert cp_cmds, "Kein serverseitiges cp -a Backup ausgeführt"
+    assert re.search(r"/backup/predeploy-\d{8}-\d{6}", cp_cmds[0]), cp_cmds[0]
+    assert "/html" in cp_cmds[0]  # Quelle ist remote_path
+    # Keine Downloads: FakeSFTP hat keine get()-Methode mehr -> rein serverseitig.
+    assert not hasattr(fake, "downloaded")
+    # Kein lokaler predeploy-Ordner im backup_dir.
     backup_dir = tmp_path / "backup"
-    predeploy_dirs = [
-        d for d in backup_dir.iterdir()
-        if d.is_dir() and re.fullmatch(r"predeploy-\d{8}-\d{6}", d.name)
-    ]
-    assert predeploy_dirs, "Kein lokaler predeploy-Backup-Ordner angelegt"
-    target = predeploy_dirs[0]
-    # remote_path-Inhalt wurde in diesen Ordner heruntergeladen.
-    assert (target / "index.html").exists()
-    assert (target / "old.js").exists()
-    # Die Downloads zeigen auf den lokalen predeploy-Ordner.
-    assert all("predeploy-" in local for _remote, local in fake.downloaded)
-    # Das Backup lief VOR dem Prune: old.js wurde danach trotzdem geprunt.
+    if backup_dir.exists():
+        assert not any(d.name.startswith("predeploy-") for d in backup_dir.iterdir())
+    # Backup lief VOR dem Prune: old.js wurde danach trotzdem geprunt.
     assert any(p.endswith("old.js") for p in fake.removed)
 
 
-def test_predeploy_backup_empty_server_is_ok(tmp_path, monkeypatch):
-    """Ein leerer Server (keine Einträge) erzeugt nur einen leeren Backup-Ordner
-    und bricht den Deploy nicht ab."""
+def test_predeploy_backup_retention_keeps_five_server_side(tmp_path, monkeypatch):
+    """Retention: serverseitig bleiben max. MAX_PREDEPLOY_BACKUPS predeploy-
+    Ordner übrig; ältere werden per rm -rf serverseitig entfernt."""
     monkeypatch.chdir(tmp_path)
     _make_dist(tmp_path)
 
@@ -352,52 +390,25 @@ def test_predeploy_backup_empty_server_is_ok(tmp_path, monkeypatch):
         image_export_dir=str(tmp_path / "export" / "images"),
         backup=_backup_config(),
     )
-    fake = FakeSFTP()  # kein Listing -> Server leer
-    _patch_sftp(monkeypatch, fake)
-
-    wi.phase_deploy(config)
-
-    backup_dir = tmp_path / "backup"
-    predeploy_dirs = [d for d in backup_dir.iterdir() if d.name.startswith("predeploy-")]
-    assert predeploy_dirs, "Kein predeploy-Ordner angelegt"
-    assert fake.downloaded == []  # nichts heruntergeladen, aber sauber
-
-
-def test_predeploy_backup_retention_keeps_five(tmp_path, monkeypatch):
-    """Retention: nach dem Backup bleiben max. MAX_PREDEPLOY_BACKUPS lokale
-    predeploy-Ordner übrig."""
-    monkeypatch.chdir(tmp_path)
-    _make_dist(tmp_path)
-
-    config = make_config(
-        password="geheim",
-        protocol="sftp",
-        export_path=str(tmp_path / "frontend" / "src" / "assets" / "wines.json"),
-        image_export_dir=str(tmp_path / "export" / "images"),
-        backup=_backup_config(),
-    )
-    # Mehr alte predeploy-Ordner als erlaubt vorab anlegen.
-    backup_dir = tmp_path / "backup"
-    backup_dir.mkdir(parents=True)
-    for i in range(7):
-        (backup_dir / f"predeploy-20200101-00000{i}").mkdir()
-
+    # Server meldet 7 vorhandene predeploy-Ordner + nach cp -a kommt der neue
+    # hinzu -> ls liefert diese Liste bei der Retention.
+    existing = [f"predeploy-20200101-00000{i}" for i in range(7)]
     fake = FakeSFTP()
-    _patch_sftp(monkeypatch, fake)
+    transport = FakeTransport(ls_output=existing + ["predeploy-20991231-235959"])
+    _patch_sftp(monkeypatch, fake, transport)
 
     wi.phase_deploy(config)
 
-    remaining = sorted(
-        d.name for d in backup_dir.iterdir()
-        if d.is_dir() and d.name.startswith("predeploy-")
-    )
-    # 7 alte + 1 neuer = 8 -> auf MAX_PREDEPLOY_BACKUPS reduziert.
-    assert len(remaining) == wi.MAX_PREDEPLOY_BACKUPS
+    rm_cmds = [c for c in transport.exec_commands if c.startswith("rm -rf")]
+    # 8 Ordner - 5 behalten = 3 Löschungen.
+    assert len(rm_cmds) == 8 - wi.MAX_PREDEPLOY_BACKUPS
+    # Die ältesten werden entfernt.
+    assert any("predeploy-20200101-000000" in c for c in rm_cmds)
 
 
 def test_deploy_does_not_prune_when_backup_fails(tmp_path, monkeypatch):
-    """Schlägt das Pre-Deploy-Backup fehl, wird NICHT geprunt und der Deploy
-    bricht sauber ab (exit 1), mit eigener (Nicht-Verbindungs-)Meldung."""
+    """Schlägt das serverseitige Pre-Deploy-Backup fehl, wird NICHT geprunt und
+    der Deploy bricht sauber ab (exit 1), mit eigener Meldung."""
     monkeypatch.chdir(tmp_path)
     _make_dist(tmp_path)
 
@@ -409,13 +420,12 @@ def test_deploy_does_not_prune_when_backup_fails(tmp_path, monkeypatch):
         backup=_backup_config(),
     )
     listing = {config.deploy.remote_path: [FakeEntry("index.html"), FakeEntry("old.js")]}
-    # Der Download einer Datei schlägt fehl -> Backup scheitert grundsätzlich.
-    fake = FakeSFTP(remote_listing=listing, download_fail_on="index.html")
-    _patch_sftp(monkeypatch, fake)
+    fake = FakeSFTP(remote_listing=listing)
+    # Das serverseitige cp -a schlägt fehl -> Backup scheitert grundsätzlich.
+    transport = FakeTransport(backup_fail=True)
+    _patch_sftp(monkeypatch, fake, transport)
 
-    import pytest as _pytest
-
-    with _pytest.raises(SystemExit) as exc:
+    with pytest.raises(SystemExit) as exc:
         wi.phase_deploy(config)
     assert exc.value.code == 1
     # Kein Prune: keine Datei wurde gelöscht.
@@ -436,8 +446,9 @@ def test_backup_failure_message_is_distinct_from_connection_error(tmp_path, monk
         backup=_backup_config(),
     )
     listing = {config.deploy.remote_path: [FakeEntry("index.html")]}
-    fake = FakeSFTP(remote_listing=listing, download_fail_on="index.html")
-    _patch_sftp(monkeypatch, fake)
+    fake = FakeSFTP(remote_listing=listing)
+    transport = FakeTransport(backup_fail=True)
+    _patch_sftp(monkeypatch, fake, transport)
 
     with pytest.raises(SystemExit):
         wi.phase_deploy(config)
@@ -448,22 +459,25 @@ def test_backup_failure_message_is_distinct_from_connection_error(tmp_path, monk
     assert "Verbindung zum Server" not in err
 
 
-def test_deploy_aborts_without_backup_config(tmp_path, monkeypatch):
-    """Ohne backup-Konfiguration gibt es keinen lokalen Backup-Zielordner ->
+def test_deploy_aborts_without_remote_backup_dir(tmp_path, monkeypatch):
+    """Ohne remote_backup_dir gibt es kein serverseitiges Backup-Ziel ->
     Deploy bricht ab, bevor geprunt wird."""
     monkeypatch.chdir(tmp_path)
     _make_dist(tmp_path)
 
+    backup = _backup_config()
+    backup.remote_backup_dir = None
     config = make_config(
         password="geheim",
         protocol="sftp",
         export_path=str(tmp_path / "frontend" / "src" / "assets" / "wines.json"),
         image_export_dir=str(tmp_path / "export" / "images"),
-        backup=None,
+        backup=backup,
     )
     listing = {config.deploy.remote_path: [FakeEntry("index.html"), FakeEntry("old.js")]}
     fake = FakeSFTP(remote_listing=listing)
-    _patch_sftp(monkeypatch, fake)
+    transport = FakeTransport()
+    _patch_sftp(monkeypatch, fake, transport)
 
     with pytest.raises(SystemExit) as exc:
         wi.phase_deploy(config)
@@ -471,20 +485,50 @@ def test_deploy_aborts_without_backup_config(tmp_path, monkeypatch):
     assert fake.removed == []
 
 
+def test_predeploy_backup_respects_config_override(tmp_path, monkeypatch):
+    """Optionales Config-Feld max_predeploy_backups überschreibt den Default 5."""
+    monkeypatch.chdir(tmp_path)
+    _make_dist(tmp_path)
+
+    backup = _backup_config()
+    backup.max_predeploy_backups = 2
+    config = make_config(
+        password="geheim",
+        protocol="sftp",
+        export_path=str(tmp_path / "frontend" / "src" / "assets" / "wines.json"),
+        image_export_dir=str(tmp_path / "export" / "images"),
+        backup=backup,
+    )
+    existing = [f"predeploy-20200101-00000{i}" for i in range(4)]
+    fake = FakeSFTP()
+    transport = FakeTransport(ls_output=existing + ["predeploy-20991231-235959"])
+    _patch_sftp(monkeypatch, fake, transport)
+
+    wi.phase_deploy(config)
+
+    rm_cmds = [c for c in transport.exec_commands if c.startswith("rm -rf")]
+    # 5 Ordner - 2 behalten = 3 Löschungen.
+    assert len(rm_cmds) == 5 - 2
+
+
 # --- Aufgabe 2: FTP-Deploy mit lokalem Pre-Deploy-Backup ---------------------
 
 
 class FakeFTP:
-    """Minimale ftplib.FTP-Attrappe für den FTP-Deploy-Pfad."""
+    """Minimale ftplib.FTP-Attrappe für den FTP-Deploy-Pfad.
 
-    def __init__(self, listing=None, dirs=None, download_fail_on=None):
+    ``copy_fail`` lässt die serverseitige Kopie (SITE CPFR/CPTO) fehlschlagen.
+    """
+
+    def __init__(self, listing=None, dirs=None, copy_fail=False):
         self.stored = []
         self.deleted = []
-        self.downloaded = []
+        self.removed_dirs = []
+        self.site_cmds = []  # ausgeführte SITE CPFR/CPTO Kommandos
         # listing: {remote_dir: [namen]} für nlst; dirs: set von Verzeichnispfaden.
         self.listing = listing or {}
         self.dirs = set(dirs or [])
-        self.download_fail_on = download_fail_on
+        self.copy_fail = copy_fail
         self._pwd = "/"
 
     def login(self, user, password):
@@ -505,25 +549,27 @@ class FakeFTP:
     def mkd(self, path):
         self.dirs.add(path)
 
+    def rmd(self, path):
+        self.removed_dirs.append(path)
+        self.dirs.discard(path)
+
     def nlst(self, path=""):
         return self.listing.get(path, [])
 
     def sendcmd(self, cmd):
+        if cmd.startswith("SITE CP"):
+            if self.copy_fail:
+                import ftplib as _f
+
+                raise _f.error_perm(f"550 copy failed: {cmd}")
+            self.site_cmds.append(cmd)
+            return "250 copied"
         import ftplib as _f
 
         raise _f.error_perm("500 unknown")
 
     def storbinary(self, cmd, fh):
         self.stored.append(cmd.split(" ", 1)[1])
-
-    def retrbinary(self, cmd, callback):
-        remote = cmd.split(" ", 1)[1]
-        if self.download_fail_on and self.download_fail_on in remote:
-            import ftplib as _f
-
-            raise _f.error_perm(f"550 download failed: {remote}")
-        self.downloaded.append(remote)
-        callback(b"backup")
 
     def delete(self, path):
         self.deleted.append(path)
@@ -536,9 +582,10 @@ def _patch_ftp(monkeypatch, fake):
     monkeypatch.setattr(wi.ftplib, "FTP", lambda *a, **k: fake)
 
 
-def test_ftp_deploy_downloads_remote_path_before_prune(tmp_path, monkeypatch):
-    """FTP-Deploy: Vor dem Prune wird remote_path lokal nach
-    backup_dir/predeploy-<ts>/ geladen und danach geprunt."""
+def test_ftp_deploy_copies_remote_path_server_side_before_prune(tmp_path, monkeypatch):
+    """FTP-Deploy: Vor dem Prune wird remote_path SERVERSEITIG (SITE CPFR/CPTO)
+    nach remote_backup_dir/predeploy-<ts>/ kopiert – kein Download – und danach
+    wird geprunt."""
     monkeypatch.chdir(tmp_path)
     _make_dist(tmp_path)
 
@@ -559,22 +606,21 @@ def test_ftp_deploy_downloads_remote_path_before_prune(tmp_path, monkeypatch):
 
     import re
 
+    # Serverseitige Kopie per SITE CPFR/CPTO in zeitgestempelten predeploy-Ordner.
+    cpto = [c for c in fake.site_cmds if c.startswith("SITE CPTO")]
+    assert cpto, "Keine serverseitige FTP-Kopie (SITE CPTO) ausgeführt"
+    assert any(re.search(r"/backup/predeploy-\d{8}-\d{6}", c) for c in cpto), cpto
+    # Kein lokaler predeploy-Ordner im backup_dir.
     backup_dir = tmp_path / "backup"
-    predeploy_dirs = [
-        d for d in backup_dir.iterdir()
-        if d.is_dir() and re.fullmatch(r"predeploy-\d{8}-\d{6}", d.name)
-    ]
-    assert predeploy_dirs, "Kein lokaler predeploy-Backup-Ordner (FTP)"
-    target = predeploy_dirs[0]
-    assert (target / "index.html").exists()
-    assert (target / "old.js").exists()
+    if backup_dir.exists():
+        assert not any(d.name.startswith("predeploy-") for d in backup_dir.iterdir())
     # Backup lief VOR dem Prune: old.js wurde danach geprunt.
     assert any(p.endswith("old.js") for p in fake.deleted)
 
 
 def test_ftp_deploy_does_not_prune_when_backup_fails(tmp_path, monkeypatch):
-    """FTP-Deploy: Schlägt das Pre-Deploy-Backup fehl, wird NICHT geprunt und
-    der Deploy bricht sauber ab (exit 1)."""
+    """FTP-Deploy: Schlägt das serverseitige Pre-Deploy-Backup fehl, wird NICHT
+    geprunt und der Deploy bricht sauber ab (exit 1)."""
     monkeypatch.chdir(tmp_path)
     _make_dist(tmp_path)
 
@@ -587,7 +633,7 @@ def test_ftp_deploy_does_not_prune_when_backup_fails(tmp_path, monkeypatch):
     )
     base = config.deploy.remote_path
     listing = {base: [f"{base}/index.html", f"{base}/old.js"]}
-    fake = FakeFTP(listing=listing, dirs={base}, download_fail_on="index.html")
+    fake = FakeFTP(listing=listing, dirs={base}, copy_fail=True)
     _patch_ftp(monkeypatch, fake)
 
     with pytest.raises(SystemExit) as exc:
