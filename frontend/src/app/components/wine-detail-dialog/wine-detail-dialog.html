@@ -21,90 +21,101 @@
         }
       </header>
 
-      <!-- Herkunft -->
-      @if (hasOrigin()) {
-        <section class="group">
-          <h3 class="group-title">Herkunft</h3>
-          @if (isPresent(w.country)) {
-            <div class="row" data-field="country"><span class="label">Land</span>{{ w.country }}</div>
-          }
-          @if (isPresent(w.origin)) {
-            <div class="row" data-field="origin"><span class="label">Region</span>{{ w.origin }}</div>
-          }
-        </section>
-      }
+      <div class="dialog-row">
 
-      <!-- Weinprofil -->
-      @if (hasProfile()) {
-        <section class="group">
-          <h3 class="group-title">Weinprofil</h3>
-          @if (grapeList(w).length) {
-            <div class="row" data-field="grape">
-              <span class="label">Rebsorte</span>{{ grapeList(w).join(', ') }}
-            </div>
-          }
-          @if (isPresent(w.type)) {
-            <div class="row" data-field="type"><span class="label">Typ</span>{{ w.type }}</div>
-          }
-          @if (qualityList().length) {
-            <div class="row" data-field="quality">
-              <span class="label">Qualität</span>{{ qualityList().join(', ') }}
-            </div>
-          }
-        </section>
-      }
+        <div class="dialog-column">
 
-      <!-- Verkostung -->
-      @if (hasTasting()) {
-        <section class="group">
-          <h3 class="group-title">Verkostung</h3>
-          @if (isPresent(w.tasting_date)) {
-            <div class="row" data-field="tasting_date">
-              <span class="label">Datum</span>{{ w.tasting_date }}
-            </div>
+          <!-- Herkunft -->
+          @if (hasOrigin()) {
+            <section class="group">
+              <h3 class="group-title">Herkunft</h3>
+              @if (isPresent(w.country)) {
+                <div class="row" data-field="country"><span class="label">Land</span>{{ w.country }}</div>
+              }
+              @if (isPresent(w.origin)) {
+                <div class="row" data-field="origin"><span class="label">Region</span>{{ w.origin }}</div>
+              }
+            </section>
           }
-          @if (isPresent(w.description)) {
-            <p class="d-description" data-field="description">{{ w.description }}</p>
-          }
-        </section>
-      }
 
-      <!-- Kaufinfo -->
-      @if (isPresent(w.price)) {
-        <section class="group">
-          <h3 class="group-title">Kaufinfo</h3>
-          <div class="row" data-field="price">
-            <span class="label">Preis</span>{{ formatPrice($any(w.price)) }}
-          </div>
-        </section>
-      }
+          <!-- Weinprofil -->
+          @if (hasProfile()) {
+            <section class="group">
+              <h3 class="group-title">Weinprofil</h3>
+              @if (grapeList(w).length) {
+                <div class="row" data-field="grape">
+                  <span class="label">Rebsorte</span>{{ grapeList(w).join(', ') }}
+                </div>
+              }
+              @if (isPresent(w.type)) {
+                <div class="row" data-field="type"><span class="label">Typ</span>{{ w.type }}</div>
+              }
+              @if (qualityList().length) {
+                <div class="row" data-field="quality">
+                  <span class="label">Qualität</span>{{ qualityList().join(', ') }}
+                </div>
+              }
+            </section>
+          }
 
-      <!-- Medien -->
-      @if (hasMedia()) {
-        <section class="group group-media">
-          @if (mediaSrc(w.image); as img) {
-            <img class="d-image" data-field="image" [src]="img" [alt]="w.name" />
+          <!-- Verkostung -->
+          @if (hasTasting()) {
+            <section class="group">
+              <h3 class="group-title">Verkostung</h3>
+              @if (isPresent(w.tasting_date)) {
+                <div class="row" data-field="tasting_date">
+                  <span class="label">Datum</span>{{ w.tasting_date }}
+                </div>
+              }
+              @if (isPresent(w.description)) {
+                <p class="d-description" data-field="description">{{ w.description }}</p>
+              }
+            </section>
           }
-          @if (mediaSrc(w.audio); as a) {
-            <audio class="d-audio" data-field="audio" controls [src]="a"></audio>
-          }
-          @if (mediaSrc(w.video); as v) {
-            <video class="d-video" data-field="video" controls [src]="v"></video>
-          }
-        </section>
-      }
 
-      <!-- Zusatzfelder -->
-      @if (extraEntries().length) {
-        <section class="group group-extra">
-          <h3 class="group-title">Verkostungsnotizen</h3>
-          @for (e of extraEntries(); track e.key) {
-            <div class="row" [attr.data-field]="e.key">
-              <span class="label">{{ e.label }}</span>{{ e.value }}
-            </div>
+          <!-- Kaufinfo -->
+          @if (isPresent(w.price)) {
+            <section class="group">
+              <h3 class="group-title">Kaufinfo</h3>
+              <div class="row" data-field="price">
+                <span class="label">Preis</span>{{ formatPrice($any(w.price)) }}
+              </div>
+            </section>
           }
-        </section>
-      }
+
+          <!-- Zusatzfelder -->
+          @if (extraEntries().length) {
+            <section class="group group-extra">
+              <h3 class="group-title">Verkostungsnotizen</h3>
+              @for (e of extraEntries(); track e.key) {
+                <div class="row" [attr.data-field]="e.key">
+                  <span class="label">{{ e.label }}</span>{{ e.value }}
+                </div>
+              }
+            </section>
+          }
+
+        </div>
+
+        <div class="dialog-column media">
+          <!-- Medien -->
+          @if (hasMedia()) {
+            <section class="group group-media">
+              @if (mediaSrc(w.image); as img) {
+                <img class="d-image" data-field="image" [src]="img" [alt]="w.name" />
+              }
+              @if (mediaSrc(w.audio); as a) {
+                <audio class="d-audio" data-field="audio" controls [src]="a"></audio>
+              }
+              @if (mediaSrc(w.video); as v) {
+                <video class="d-video" data-field="video" controls [src]="v"></video>
+              }
+            </section>
+          }
+        </div>
+
+      </div>
+
     </div>
   </div>
 }
