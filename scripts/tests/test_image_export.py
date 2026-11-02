@@ -97,7 +97,35 @@ def test_missing_image_warns_and_continues(tmp_path, capsys):
         import_dir=str(import_dir), image_export_dir=str(export_dir), image_resize_px=100
     )
     wi.phase_image_export(config)
-    assert "nicht gefunden" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    # Keine pro-Bild-Warnung mehr, sondern eine Zusammenfassungszeile mit der
+    # Zahl fehlender Quellen.
+    assert "nicht gefunden" not in err
+    assert "image-export:" in err
+    assert "1 Quellen fehlten" in err
+
+
+def test_no_per_image_skip_warnings_only_summary(tmp_path, capsys):
+    """Bereits aktuelle Zielbilder werden still übersprungen – keine Zeile pro
+    Bild, nur eine Zusammenfassung am Ende der Phase."""
+    import_dir, export_dir = setup_import(tmp_path)
+    config = make_config(
+        import_dir=str(import_dir), image_export_dir=str(export_dir), image_resize_px=100
+    )
+    # Erster Lauf skaliert das Bild.
+    wi.phase_image_export(config)
+    capsys.readouterr()
+    # Kopie neuer machen -> zweiter Lauf überspringt still.
+    dst = export_dir / "wein.jpg"
+    future = time.time() + 1000
+    os.utime(dst, (future, future))
+
+    wi.phase_image_export(config)
+    err = capsys.readouterr().err
+    assert "übersprungen" in err  # nur in der Zusammenfassung
+    assert err.count("\n") == 1  # exakt eine Zeile (die Zusammenfassung)
+    assert "image-export:" in err
+    assert "1 bereits vorhanden übersprungen" in err
 
 
 def test_original_unchanged(tmp_path):

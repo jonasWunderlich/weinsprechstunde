@@ -131,6 +131,30 @@ class FakeFTP:
         pass
 
 
+class MlsdFakeFTP(FakeFTP):
+    """FakeFTP mit MLSD-Unterstützung (RFC 3659).
+
+    ``mlsd_listing`` bildet remote_dir -> Liste von (basename, {"type": ...})
+    ab. Jeder ``mlsd``-Aufruf wird in ``mlsd_calls`` protokolliert, und jeder
+    ``nlst``-Aufruf in ``nlst_calls`` – so lässt sich nachweisen, dass der Prune
+    MLSD nutzt und geschützte Verzeichnisse GAR NICHT auflistet.
+    """
+
+    def __init__(self, mlsd_listing=None, **kwargs):
+        super().__init__(**kwargs)
+        self.mlsd_listing = mlsd_listing or {}
+        self.mlsd_calls = []
+        self.nlst_calls = []
+
+    def mlsd(self, path="", facts=None):
+        self.mlsd_calls.append(path)
+        return list(self.mlsd_listing.get(path, []))
+
+    def nlst(self, path=""):
+        self.nlst_calls.append(path)
+        return super().nlst(path)
+
+
 def _patch_ftp(monkeypatch, fake):
     """wi._ftps_connect liefert den Fake statt eine echte FTP_TLS-Verbindung."""
     monkeypatch.setattr(wi, "_ftps_connect", lambda *a, **k: fake)
@@ -349,6 +373,133 @@ def test_deploy_prunes_only_within_remote_path(tmp_path, monkeypatch):
     # ... aber nichts im geschützten images-/data-Ordner.
     assert not any("/images/" in p for p in fake.deleted)
     assert not any("/data/" in p for p in fake.deleted)
+
+
+# --- Prune: MLSD-Listing + geschützte Teilbäume nicht betreten --------------
+
+
+def test_prune_uses_mlsd_and_does_not_enter_protected_dirs(tmp_path, monkeypatch):
+    """Der Prune nutzt MLSD-Listing und steigt NICHT in images/ oder data/ ab
+    (kein Listing, keine Löschung dort), löscht aber veraltete dist-Dateien."""
+    monkeypatch.chdir(tmp_path)
+    _make_dist(tmp_path)
+
+    config = make_config(password="geheim", protocol="ftpes")
+    base = config.deploy.remote_path  # /wine_app
+
+    mlsd_listing = {
+        base: [
+            ("index.html", {"type": "file"}),
+            ("stale.js", {"type": "file"}),
+            ("images", {"type": "dir"}),
+            ("data", {"type": "dir"}),
+        ],
+        # images/ und data/ liefern Inhalte -- dürfen aber NIE aufgelistet
+        # werden, weil der Prune sie nicht betreten darf.
+        f"{base}/images": [("keep.jpg", {"type": "file"})],
+        f"{base}/data": [("wines.json", {"type": "file"})],
+    }
+    fake = MlsdFakeFTP(mlsd_listing=mlsd_listing)
+    _patch_ftp(monkeypatch, fake)
+
+    wi.phase_deploy(config)
+
+    # MLSD wurde fürs remote_base-Listing genutzt (kein nlst-Fallback nötig).
+    assert base in fake.mlsd_calls
+    assert fake.nlst_calls == []
+    # Geschützte Verzeichnisse wurden GAR NICHT aufgelistet (nicht betreten).
+    assert f"{base}/images" not in fake.mlsd_calls
+    assert f"{base}/data" not in fake.mlsd_calls
+    # Veraltete dist-Datei wird geprunt ...
+    assert f"{base}/stale.js" in fake.deleted
+    # ... aber nichts im geschützten images-/data-Ordner, und wines.json bleibt.
+    assert not any("/images/" in p for p in fake.deleted)
+    assert not any("/data/" in p for p in fake.deleted)
+    assert not any(p.endswith("wines.json") for p in fake.deleted)
+
+
+def test_prune_mlsd_deletes_stale_nested_dist_file(tmp_path, monkeypatch):
+    """MLSD-basierter Prune löscht veraltete Dateien auch in (ungeschützten)
+    Unterordnern korrekt."""
+    monkeypatch.chdir(tmp_path)
+    _make_dist(tmp_path)
+
+    config = make_config(password="geheim", protocol="ftpes")
+    base = config.deploy.remote_path
+
+    mlsd_listing = {
+        base: [
+            ("index.html", {"type": "file"}),
+            ("assets", {"type": "dir"}),
+        ],
+        f"{base}/assets": [("old-chunk.js", {"type": "file"})],
+    }
+    fake = MlsdFakeFTP(mlsd_listing=mlsd_listing)
+    _patch_ftp(monkeypatch, fake)
+
+    wi.phase_deploy(config)
+
+    # In den ungeschützten assets-Ordner wurde abgestiegen und die veraltete
+    # Datei gelöscht.
+    assert f"{base}/assets" in fake.mlsd_calls
+    assert f"{base}/assets/old-chunk.js" in fake.deleted
+
+
+# --- --force-images: alle Bilder neu hochladen ------------------------------
+
+
+def _setup_images_and_dist(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _make_dist(tmp_path)
+    images = tmp_path / "export" / "images"
+    images.mkdir(parents=True)
+    (images / "a.jpg").write_bytes(b"img-a")
+    (images / "b.jpg").write_bytes(b"img-b")
+    config = make_config(
+        password="geheim",
+        protocol="ftpes",
+        export_path=str(tmp_path / "export" / "data" / "wines.json"),
+        image_export_dir=str(images),
+    )
+    return config, images
+
+
+def test_force_images_reuploads_all_images_even_if_up_to_date(tmp_path, monkeypatch):
+    config, images = _setup_images_and_dist(tmp_path, monkeypatch)
+    base = config.deploy.remote_images_path
+    # Beide Remote-Bilder sind laut MDTM aktuell (neuer als lokal).
+    future = max((images / n).stat().st_mtime for n in ("a.jpg", "b.jpg")) + 1000
+    mtimes = {f"{base}/a.jpg": future, f"{base}/b.jpg": future}
+    fake = FakeFTP(mtimes=mtimes)
+    _patch_ftp(monkeypatch, fake)
+
+    wi.phase_deploy(config, force_images=True)
+
+    # Trotz aktuellem Timestamp werden ALLE Bilder neu hochgeladen.
+    assert f"{base}/a.jpg" in fake.stored
+    assert f"{base}/b.jpg" in fake.stored
+
+
+def test_without_force_images_skips_up_to_date_images(tmp_path, monkeypatch):
+    config, images = _setup_images_and_dist(tmp_path, monkeypatch)
+    base = config.deploy.remote_images_path
+    future = (images / "a.jpg").stat().st_mtime + 1000
+    # a.jpg ist aktuell (wird übersprungen), b.jpg fehlt remote (wird geladen).
+    mtimes = {f"{base}/a.jpg": future}
+    fake = FakeFTP(mtimes=mtimes)
+    _patch_ftp(monkeypatch, fake)
+
+    wi.phase_deploy(config, force_images=False)
+
+    assert f"{base}/a.jpg" not in fake.stored  # aktuell -> übersprungen
+    assert f"{base}/b.jpg" in fake.stored       # fehlend -> hochgeladen
+
+
+def test_force_images_cli_flag_parsed():
+    """--force-images landet als args.force_images im Parser; Default False."""
+    parser = wi.build_parser()
+    assert parser.parse_args(["deploy"]).force_images is False
+    assert parser.parse_args(["deploy", "--force-images"]).force_images is True
 
 
 # --- Remote-Download ------------------------------------------------------

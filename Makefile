@@ -10,6 +10,12 @@
 #   3. Fallback python
 PYTHON ?= $(shell [ -x .venv/bin/python ] && echo .venv/bin/python || command -v python3 || echo python)
 
+# FORCE_IMAGES=1 reicht --force-images an die deploy-Phase durch und lädt ALLE
+# Bilder neu hoch (unabhängig vom Timestamp-Vergleich), z. B.:
+#   make deploy FORCE_IMAGES=1
+FORCE_IMAGES ?=
+DEPLOY_FLAGS := $(if $(FORCE_IMAGES),--force-images,)
+
 .PHONY: prepare export image-export deploy all
 
 ## prepare: JSON-Quelldateien aufbereiten (Phase prepare)
@@ -28,6 +34,7 @@ image-export:
 all: prepare export image-export
 
 ## deploy: vollständige Pipeline inkl. Angular-Build und Server-Upload
+## (FORCE_IMAGES=1 lädt ALLE Bilder neu hoch)
 deploy: prepare export image-export
 	cd frontend && npm run build
-	$(PYTHON) scripts/weinimport.py deploy
+	$(PYTHON) scripts/weinimport.py deploy $(DEPLOY_FLAGS)

@@ -58,7 +58,7 @@ def test_rename_renames_json_image_and_audio(tmp_path):
     assert data["audio"] == "2021-10-12-mein-wein.mp3"
 
 
-def test_rename_collision_skips_with_warning(tmp_path, capsys):
+def test_rename_collision_skips_with_summary(tmp_path, capsys):
     import_dir = tmp_path / "import"
     import_dir.mkdir()
     # Zieldatei existiert bereits
@@ -72,7 +72,10 @@ def test_rename_collision_skips_with_warning(tmp_path, capsys):
     wi.phase_prepare(config, default_schema())
 
     err = capsys.readouterr().err
-    assert "existiert bereits" in err
+    # Keine pro-Datei-Warnung ("WARNUNG: Zieldatei ... existiert bereits,
+    # übersprungen.") mehr, sondern eine Zusammenfassungszeile am Ende.
+    assert "WARNUNG: Zieldatei" not in err
+    assert "prepare: 1 Umbenennung(en) übersprungen" in err
     # Originaldatei bleibt erhalten
     assert (import_dir / "orig.json").exists()
 

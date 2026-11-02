@@ -187,6 +187,7 @@ die initiale Anzeige nicht mehr ausgewertet.
 | `python weinimport.py export` | Nur Phase export |
 | `python weinimport.py image-export` | Nur Phase image-export |
 | `python weinimport.py deploy` | Nur Phase deploy |
+| `python weinimport.py deploy --force-images` | Deploy, lädt ALLE Bilder neu hoch (kein Timestamp-Vergleich); auch via `make deploy FORCE_IMAGES=1` |
 
 #### Konfiguration laden
 
@@ -438,8 +439,14 @@ def phase_prepare(config: Config, schema: list[SchemaField]) -> None:
             json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
         )
 
-def rename_file_group(json_file: Path, new_stem: str, data: dict) -> None:
-    """JSON + Bild + Audio auf neuen Basisnamen umbenennen."""
+def rename_file_group(json_file: Path, new_stem: str, data: dict) -> int:
+    """JSON + Bild + Audio auf neuen Basisnamen umbenennen.
+
+    Gibt die Anzahl übersprungener Umbenennungen (Zieldatei existierte bereits)
+    zurück. Diese Kollisionen werden NICHT pro Datei geloggt; die prepare-Phase
+    fasst sie am Ende zu EINER Zeile zusammen (ruhige Konsole).
+    """
+    skipped = 0
     for field in ("image", "audio"):
         if not data.get(field):
             continue
@@ -448,17 +455,21 @@ def rename_file_group(json_file: Path, new_stem: str, data: dict) -> None:
             continue
         new_path = old_path.parent / f"{new_stem}{old_path.suffix}"
         if new_path.exists():
-            sys.stderr.write(f"WARNUNG: Zieldatei {new_path} existiert bereits, übersprungen.\n")
+            skipped += 1   # still überspringen, keine pro-Datei-Warnung
             continue
         old_path.rename(new_path)
         data[field] = new_path.name
 
     new_json = json_file.parent / f"{new_stem}.json"
     if new_json.exists() and new_json != json_file:
-        sys.stderr.write(f"WARNUNG: Zieldatei {new_json} existiert bereits, übersprungen.\n")
-        return
+        return skipped + 1
     if new_json != json_file:
         json_file.rename(new_json)
+    return skipped
+
+# phase_prepare summiert die Rückgabewerte und schreibt am Ende höchstens EINE
+# Zusammenfassung: "prepare: N Umbenennung(en) übersprungen (Zieldatei existierte
+# bereits)." statt einer Warnzeile pro kollidierender Datei.
 
 def normalize_number_fields(data: dict, schema: list[SchemaField], json_file: Path) -> None:
     """Felder mit WineSchema-Typ 'number' von String zu Zahl normalisieren.
@@ -552,6 +563,7 @@ def phase_export(config: Config) -> None:
 def phase_image_export(config: Config) -> None:
     from PIL import Image
 
+    scaled = skipped = missing = 0
     for json_file in collect_json_files(config.import_dir):
         data = json.loads(json_file.read_text(encoding="utf-8"))
         image_ref = data.get("image")
@@ -560,14 +572,16 @@ def phase_image_export(config: Config) -> None:
 
         src = json_file.parent / image_ref
         if not src.exists():
-            sys.stderr.write(f"WARNUNG: Bild {src} nicht gefunden, übersprungen.\n")
+            missing += 1           # keine pro-Bild-Warnung; am Ende zusammengefasst
             continue
 
         dst = Path(config.image_export_dir) / image_ref
         dst.parent.mkdir(parents=True, exist_ok=True)
 
-        # Timestamp-Vergleich: überspringen wenn Kopie aktuell
+        # Timestamp-Vergleich: STILL überspringen wenn Kopie aktuell
+        # (keine Zeile pro bereits vorhandenem Bild).
         if dst.exists() and dst.stat().st_mtime >= src.stat().st_mtime:
+            skipped += 1
             continue
 
         with Image.open(src) as img:
@@ -577,19 +591,35 @@ def phase_image_export(config: Config) -> None:
             else:  # "height"
                 img.thumbnail((99999, px))
             img.save(dst, format=img.format)
+        scaled += 1
         # Originale werden nicht verändert
+
+    # EINE Zusammenfassung statt pro-Bild-Warnungen:
+    sys.stderr.write(
+        f"image-export: {scaled} skaliert, {skipped} bereits vorhanden "
+        f"übersprungen, {missing} Quellen fehlten.\n"
+    )
 ```
+
+**Ruhiges Logging (prepare + image-export)**: Weder `prepare` noch
+`image-export` schreiben eine Warnzeile pro übersprungener Datei/Bild. Bereits
+vorhandene Zielbilder (Timestamp aktuell) werden still übersprungen; fehlende
+Bildquellen und Umbenennungs-Kollisionen werden nur als EINE
+Zusammenfassungszeile am Ende der jeweiligen Phase ausgegeben
+(`image-export: X skaliert, Y bereits vorhanden übersprungen, Z Quellen
+fehlten.` bzw. `prepare: N Umbenennung(en) übersprungen ...`). Das vermeidet die
+frühere Konsolenflut bei hunderten bereits deployten Bildern.
 
 ---
 
 #### Phase `deploy`
 
 ```python
-def phase_deploy(config: Config) -> None:
+def phase_deploy(config: Config, force_images: bool = False) -> None:
     password = resolve_password(config)
 
     try:
-        _deploy_ftp(config, password)   # FTPES (FTP_TLS); kein SFTP-Pfad mehr
+        _deploy_ftp(config, password, force_images=force_images)  # FTPES (FTP_TLS)
     except Exception as e:
         sys.stderr.write(
             f"FEHLER: Verbindung zum Server {config.deploy.host} fehlgeschlagen. "
@@ -610,8 +640,19 @@ abweichendem Hostnamen ausliefert; die Verbindung bleibt TLS-verschlüsselt. Mit
 `FTPS_VERIFY=1` wird `ssl.create_default_context()` und damit die reguläre
 Prüfung aktiviert. Da `FTP_TLS` eine Unterklasse von `ftplib.FTP` ist, arbeiten
 die Upload-/Prune-/Download-Helfer (`_upload_ftp`, `_ftp_makedirs`,
-`_ftp_prune`, `_ftp_is_dir`, `_ftp_up_to_date`, `_ftp_download_dir`)
-unverändert auf dem übergebenen Verbindungsobjekt.
+`_ftp_prune`, `_ftp_list_entries`, `_ftp_is_dir`, `_ftp_up_to_date`,
+`_ftp_download_dir`) unverändert auf dem übergebenen Verbindungsobjekt.
+
+**Effizientes Verzeichnis-Listing (`_ftp_list_entries`, MLSD)**: Prune und
+Remote-Download ermitteln Verzeichnisinhalte primär über `ftp.mlsd()`
+(RFC 3659). Ein einziger MLSD-Roundtrip pro Verzeichnis liefert für jeden
+Eintrag direkt den Typ (`type=dir`/`file`), sodass KEIN `_ftp_is_dir` mehr
+nötig ist – dieses hatte pro Eintrag zwei `cwd`-Roundtrips über einen neuen
+TLS-Datenkanal gemacht. Bei ~476 Bildern unter `/wine_app/images` entfielen so
+~1000 langsame FTP/TLS-Roundtrips, die den Deploy-Prune faktisch blockierten.
+Unterstützt der Server MLSD nicht (oder schlägt es fehl), fällt
+`_ftp_list_entries` robust auf das alte Verhalten (`nlst` + `_ftp_is_dir` pro
+Eintrag) zurück.
 
 **TLS-Session-Reuse auf dem Datenkanal**: `_ftps_connect` instanziert nicht
 direkt `ftplib.FTP_TLS`, sondern die Subklasse `_ReuseTLS_FTP`, die
@@ -650,6 +691,20 @@ Deploy-Logik:
   `_protected_prefixes(config)` schützt zusätzlich die Präfixe `images/` und
   `data/` sowie die WineDataAsset (`wines.json`) exakt, sodass laufzeitgeladene
   Daten/Bilder beim Prune nie gelöscht werden (Req 6.6).
+- **Prune betritt geschützte Teilbäume nicht**: `_ftp_prune` steigt in ein
+  Verzeichnis, dessen relativer Pfad einem geschützten Präfix (`images/`,
+  `data/`) entspricht, GAR NICHT erst hinab – kein Listing, keine Typprüfung,
+  kein `delete` für dessen Inhalt. Das ist sowohl Schutz (nie löschen) als auch
+  Performance (keine unnötige Rekursion über hunderte Bilder) und beseitigt die
+  bisherige Deploy-Blockade.
+- **MLSD-basiertes Listing**: Der Prune-Walk nutzt `_ftp_list_entries` (MLSD,
+  ein Roundtrip pro Verzeichnis) statt `_ftp_is_dir` (zwei `cwd`-Roundtrips pro
+  Eintrag). Siehe „Effizientes Verzeichnis-Listing".
+- **`--force-images`**: Ist das CLI-Flag `--force-images` gesetzt, werden beim
+  Deploy ALLE Bilder neu hochgeladen (der `MDTM`/Timestamp-Vergleich
+  `_ftp_up_to_date` wird für Bilder übersprungen → immer `STOR`). Ohne das Flag
+  bleibt das bisherige Verhalten: nur neuere/fehlende Bilder hochladen. Über das
+  Makefile durchreichbar mit `make deploy FORCE_IMAGES=1`.
 - Timestamp-Vergleich: FTP via `MDTM`.
 - Zugangsdaten (`host`/`user`/`password`) werden nie im Klartext in der Config
   gehalten, sondern über Secrets-Datei/Umgebungsvariablen aufgelöst (Req 6.13).

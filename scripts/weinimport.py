@@ -327,15 +327,46 @@ def _ftp_is_dir(ftp: "ftplib.FTP", path: str) -> bool:
         return False
 
 
+def _ftp_list_entries(ftp: "ftplib.FTP", remote_dir: str) -> list[tuple[str, bool]]:
+    """Einträge eines Remote-Verzeichnisses als (basename, is_dir) auflisten.
+
+    Nutzt primär ``MLSD`` (RFC 3659): EIN Listing-Roundtrip liefert pro Eintrag
+    direkt den Typ (``type=dir``/``cdir``/``pdir`` vs. ``file``), sodass KEIN
+    ``_ftp_is_dir`` (zwei ``cwd``-Roundtrips pro Eintrag) mehr nötig ist. Das
+    eliminiert die ~1000 TLS-Roundtrips, die den Prune über ``/wine_app/images``
+    (~476 Bilder) blockiert haben.
+
+    Fällt ``MLSD`` aus (Server ohne MLSD-Support o. Ä.), wird robust auf das
+    bisherige Verhalten (``nlst`` + ``_ftp_is_dir`` pro Eintrag) zurückgefallen.
+    """
+    try:
+        entries: list[tuple[str, bool]] = []
+        for base, facts in ftp.mlsd(remote_dir):
+            if base in (".", ".."):
+                continue
+            entry_type = (facts.get("type") or "").lower()
+            if entry_type in ("cdir", "pdir"):
+                continue
+            entries.append((base, entry_type == "dir"))
+        return entries
+    except (ftplib.error_perm, ftplib.error_proto, AttributeError, OSError):
+        # Fallback: nlst + cwd-basierte Typerkennung (altes Verhalten).
+        result: list[tuple[str, bool]] = []
+        for name in ftp.nlst(remote_dir):
+            base = name.rsplit("/", 1)[-1]
+            if base in (".", ".."):
+                continue
+            remote_entry = name if "/" in name else f"{remote_dir.rstrip('/')}/{name}"
+            result.append((base, _ftp_is_dir(ftp, remote_entry)))
+        return result
+
+
 def _ftp_download_dir(ftp: "ftplib.FTP", remote_dir: str, local_dir: Path) -> None:
     local_dir.mkdir(parents=True, exist_ok=True)
-    for name in ftp.nlst(remote_dir):
-        base = name.rsplit("/", 1)[-1]
-        if base in (".", ".."):
-            continue
-        remote_entry = name if "/" in name else f"{remote_dir.rstrip('/')}/{name}"
+    for base, is_dir in _ftp_list_entries(ftp, remote_dir):
+        remote_entry = f"{remote_dir.rstrip('/')}/{base}"
         local_entry = local_dir / base
-        if _ftp_is_dir(ftp, remote_entry):
+        if is_dir:
             _ftp_download_dir(ftp, remote_entry, local_entry)
         else:
             with open(local_entry, "wb") as fh:
@@ -508,6 +539,7 @@ def download_remote_import(config: Config, password: str) -> None:
 
 
 def phase_prepare(config: Config, schema: list[SchemaField]) -> None:
+    skipped_renames = 0
     for json_file in collect_json_files(config.import_dir):
         data = json.loads(json_file.read_text(encoding="utf-8"))
         if "name" not in data:
@@ -529,7 +561,7 @@ def phase_prepare(config: Config, schema: list[SchemaField]) -> None:
         # 3. Umbenennung (braucht nur tasting_date; Datei bleibt im Unterordner)
         if data.get("tasting_date"):
             new_stem = f"{data['tasting_date']}-{slugify_name(data['name'])}"
-            rename_file_group(json_file, new_stem, data)
+            skipped_renames += rename_file_group(json_file, new_stem, data)
             json_file = json_file.parent / f"{new_stem}.json"
         else:
             sys.stderr.write(
@@ -545,9 +577,24 @@ def phase_prepare(config: Config, schema: list[SchemaField]) -> None:
             json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
         )
 
+    if skipped_renames:
+        # Kollisionen (Zieldatei existiert bereits) werden nicht mehr pro Datei
+        # geloggt, sondern am Ende der prepare-Phase zusammengefasst.
+        sys.stderr.write(
+            f"prepare: {skipped_renames} Umbenennung(en) übersprungen "
+            f"(Zieldatei existierte bereits).\n"
+        )
 
-def rename_file_group(json_file: Path, new_stem: str, data: dict) -> None:
-    """JSON + Bild + Audio auf neuen Basisnamen umbenennen."""
+
+def rename_file_group(json_file: Path, new_stem: str, data: dict) -> int:
+    """JSON + Bild + Audio auf neuen Basisnamen umbenennen.
+
+    Gibt die Anzahl übersprungener Umbenennungen zurück (Zieldatei existierte
+    bereits). Diese Kollisionen werden NICHT pro Datei geloggt – die rufende
+    prepare-Phase fasst sie am Ende zu einer Zeile zusammen, damit die Konsole
+    ruhig bleibt.
+    """
+    skipped = 0
     for field_name in ("image", "audio"):
         if not data.get(field_name):
             continue
@@ -556,21 +603,17 @@ def rename_file_group(json_file: Path, new_stem: str, data: dict) -> None:
             continue
         new_path = old_path.parent / f"{new_stem}{old_path.suffix}"
         if new_path.exists():
-            sys.stderr.write(
-                f"WARNUNG: Zieldatei {new_path} existiert bereits, übersprungen.\n"
-            )
+            skipped += 1
             continue
         old_path.rename(new_path)
         data[field_name] = new_path.name
 
     new_json = json_file.parent / f"{new_stem}.json"
     if new_json.exists() and new_json != json_file:
-        sys.stderr.write(
-            f"WARNUNG: Zieldatei {new_json} existiert bereits, übersprungen.\n"
-        )
-        return
+        return skipped + 1
     if new_json != json_file:
         json_file.rename(new_json)
+    return skipped
 
 
 def normalize_number_fields(data: dict, schema: list[SchemaField],
@@ -666,6 +709,9 @@ def phase_export(config: Config) -> None:
 def phase_image_export(config: Config) -> None:
     from PIL import Image
 
+    scaled = 0
+    skipped = 0
+    missing = 0
     for json_file in collect_json_files(config.import_dir):
         data = json.loads(json_file.read_text(encoding="utf-8"))
         image_ref = data.get("image")
@@ -674,14 +720,18 @@ def phase_image_export(config: Config) -> None:
 
         src = json_file.parent / image_ref
         if not src.exists():
-            sys.stderr.write(f"WARNUNG: Bild {src} nicht gefunden, übersprungen.\n")
+            # Fehlende Quelldatei wird nicht pro Bild geloggt, sondern am Ende
+            # der Phase zusammengefasst (ruhige Konsole).
+            missing += 1
             continue
 
         dst = Path(config.image_export_dir) / image_ref
         dst.parent.mkdir(parents=True, exist_ok=True)
 
-        # Timestamp-Vergleich: überspringen wenn Kopie aktuell
+        # Timestamp-Vergleich: still überspringen wenn Kopie aktuell
+        # (keine Zeile pro bereits vorhandenem Bild).
         if dst.exists() and dst.stat().st_mtime >= src.stat().st_mtime:
+            skipped += 1
             continue
 
         with Image.open(src) as img:
@@ -691,7 +741,13 @@ def phase_image_export(config: Config) -> None:
             else:  # "height"
                 img.thumbnail((99999, px))
             img.save(dst, format=img.format)
+        scaled += 1
         # Originale werden nicht verändert
+
+    sys.stderr.write(
+        f"image-export: {scaled} skaliert, {skipped} bereits vorhanden "
+        f"übersprungen, {missing} Quellen fehlten.\n"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -699,11 +755,11 @@ def phase_image_export(config: Config) -> None:
 # ---------------------------------------------------------------------------
 
 
-def phase_deploy(config: Config) -> None:
+def phase_deploy(config: Config, force_images: bool = False) -> None:
     password = resolve_password(config)
 
     try:
-        _deploy_ftp(config, password)
+        _deploy_ftp(config, password, force_images=force_images)
     except SystemExit:
         raise
     except Exception as e:
@@ -790,7 +846,7 @@ def _is_protected(rel: str, exact: set[str], prefixes: list[str]) -> bool:
     return any(prefix and rel.startswith(prefix) for prefix in prefixes)
 
 
-def _deploy_ftp(config: Config, password: str) -> None:
+def _deploy_ftp(config: Config, password: str, force_images: bool = False) -> None:
     ftp = _ftps_connect(config.deploy.host, config.deploy.user, password)
     try:
         # Browser-Build-Ordner als Deploy-Wurzel (Req 6.7).
@@ -834,7 +890,9 @@ def _deploy_ftp(config: Config, password: str) -> None:
             for img in images_dir.iterdir():
                 if img.is_file():
                     remote_img = f"{config.deploy.remote_images_path.rstrip('/')}/{img.name}"
-                    if not _ftp_up_to_date(ftp, remote_img, img):
+                    # Mit --force-images werden ALLE Bilder neu hochgeladen
+                    # (kein MDTM/Timestamp-Vergleich); sonst nur neuere/fehlende.
+                    if force_images or not _ftp_up_to_date(ftp, remote_img, img):
                         _upload_ftp(ftp, img, remote_img)
     finally:
         ftp.quit()
@@ -870,16 +928,19 @@ def _ftp_prune(ftp: "ftplib.FTP", remote_base: str, keep: set[str],
 
     def walk(remote_dir: str, prefix: str) -> None:
         try:
-            names = ftp.nlst(remote_dir)
+            entries = _ftp_list_entries(ftp, remote_dir)
         except ftplib.error_perm:
             return
-        for name in names:
-            base = name.rsplit("/", 1)[-1]
-            if base in (".", ".."):
-                continue
+        for base, is_dir in entries:
             rel = f"{prefix}{base}"
-            remote_entry = name if "/" in name else f"{remote_dir.rstrip('/')}/{name}"
-            if _ftp_is_dir(ftp, remote_entry):
+            remote_entry = f"{remote_dir.rstrip('/')}/{base}"
+            if is_dir:
+                # Geschützte Teilbäume (images/, data/) GAR NICHT betreten:
+                # kein Rekursionsabstieg, kein Listing, keine Typprüfung für
+                # deren Inhalt. Das vermeidet ~1000 FTP/TLS-Roundtrips und damit
+                # die Deploy-Blockade (Req 6.6, Performance).
+                if _is_protected(f"{rel}/", exact, prefixes):
+                    continue
                 walk(remote_entry, f"{rel}/")
             elif rel not in keep and not _is_protected(rel, exact, prefixes):
                 try:
@@ -930,6 +991,15 @@ def build_parser() -> argparse.ArgumentParser:
         default=SCHEMA_PATH,
         help=f"Pfad zur wine-schema.json (Standard: {SCHEMA_PATH}).",
     )
+    parser.add_argument(
+        "--force-images",
+        action="store_true",
+        help=(
+            "Nur für die deploy-Phase: ALLE Bilder neu hochladen, unabhängig "
+            "vom MDTM/Timestamp-Vergleich (sonst werden nur neuere/fehlende "
+            "Bilder deployt)."
+        ),
+    )
     return parser
 
 
@@ -952,7 +1022,7 @@ def main(argv: Optional[list[str]] = None) -> None:
     elif args.phase == "image-export":
         phase_image_export(config)
     elif args.phase == "deploy":
-        phase_deploy(config)
+        phase_deploy(config, force_images=args.force_images)
     else:
         _run_full_pipeline(config, schema)
 
