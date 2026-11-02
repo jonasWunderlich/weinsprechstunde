@@ -5,6 +5,7 @@ migrate_wordpress/
 # Secrets / Zugangsdaten (niemals committen)
 .env
 .env.*
+weinsprechstunde.secrets.json
 
 # Python
 __pycache__/
@@ -20,5 +21,4 @@ export/images/*
 !export/images/.gitkeep
 backup/*
 !backup/.gitkeep
-frontend/src/assets/wines.json
 wordpress-mapping.json

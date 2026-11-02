@@ -29,6 +29,8 @@ jobs:
       # Beginn von prepare automatisch via SFTP/FTP herunter.
       - name: Run import pipeline
         env:
+          WEINSPRECHSTUNDE_DEPLOY_HOST: ${{ secrets.WEINSPRECHSTUNDE_DEPLOY_HOST }}
+          WEINSPRECHSTUNDE_DEPLOY_USER: ${{ secrets.WEINSPRECHSTUNDE_DEPLOY_USER }}
           WEINSPRECHSTUNDE_DEPLOY_PASSWORD: ${{ secrets.WEINSPRECHSTUNDE_DEPLOY_PASSWORD }}
         run: python scripts/weinimport.py prepare && python scripts/weinimport.py export && python scripts/weinimport.py image-export
 
@@ -38,5 +40,7 @@ jobs:
 
       - name: Deploy to server
         env:
+          WEINSPRECHSTUNDE_DEPLOY_HOST: ${{ secrets.WEINSPRECHSTUNDE_DEPLOY_HOST }}
+          WEINSPRECHSTUNDE_DEPLOY_USER: ${{ secrets.WEINSPRECHSTUNDE_DEPLOY_USER }}
           WEINSPRECHSTUNDE_DEPLOY_PASSWORD: ${{ secrets.WEINSPRECHSTUNDE_DEPLOY_PASSWORD }}
         run: python scripts/weinimport.py deploy

@@ -3,8 +3,9 @@
 
 Ein phasenbasiertes CLI, das JSON-Quelldateien aus dem Import-Ordner aufbereitet,
 eine fertige ``wines.json`` exportiert, Bilder skaliert und Artefakte optional auf
-einen Webserver deployt. Vor der Pipeline kann ein Zwei-Tier-Backup erstellt und bei
-Bedarf der Import-Ordner per FTP/SFTP vom Webserver heruntergeladen werden.
+einen Webserver deployt. Der Transport nutzt FTP mit explizitem TLS (FTPES). Vor der
+Pipeline kann ein Zwei-Tier-Backup erstellt und bei Bedarf der Import-Ordner per
+FTPES vom Webserver heruntergeladen werden.
 
 Phasen (argparse):
     (ohne Argument) backup -> [remote-download] -> prepare -> export -> image-export
@@ -21,6 +22,7 @@ import ftplib
 import json
 import os
 import shutil
+import ssl
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -28,6 +30,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 CONFIG_PATH = "weinsprechstunde.config.json"
+SECRETS_FILENAME = "weinsprechstunde.secrets.json"
 SCHEMA_PATH = "wine-schema.json"
 LAST_ARCHIVAL_FILE = ".last_archival"
 
@@ -74,20 +77,21 @@ class BackupConfig:
     max_archival_backups: int
     archival_interval_days: int
     remote_backup_dir: Optional[str] = None
-    # Optionales Feld: wie viele serverseitige Pre-Deploy-Backups unter
-    # remote_backup_dir aufbewahrt werden. None -> Default MAX_PREDEPLOY_BACKUPS.
-    max_predeploy_backups: Optional[int] = None
 
 
 @dataclass
 class DeployConfig:
-    protocol: str  # "ftp" | "sftp"
-    host: str
-    user: str
-    password: str
+    protocol: str  # "ftpes"
     remote_path: str
     remote_images_path: str
     remote_import_path: str
+    # host/user/password werden aus der Config, der Secrets-Datei oder aus
+    # Umgebungsvariablen aufgelöst (Reihenfolge Config > Secrets > Env). Leerer
+    # Default, damit aus der Config entfernte Felder DeployConfig(**raw["deploy"])
+    # nicht brechen.
+    host: str = ""
+    user: str = ""
+    password: str = ""
 
 
 @dataclass
@@ -133,6 +137,29 @@ def load_config(path: str = CONFIG_PATH) -> Config:
     deploy = DeployConfig(**raw["deploy"])
     editor = EditorConfig(**raw["editor"])
     backup = BackupConfig(**raw["backup"]) if raw.get("backup") else None
+
+    # Secrets-Auflösung: strikt Config > Secrets-Datei > Env.
+    # 1) Optionale Secrets-Datei neben der Config lesen; fehlende Datei ist
+    #    KEIN Fehler. Werte nur einspielen, wenn das Config-Feld leer ist.
+    secrets_path = Path(path).resolve().parent / SECRETS_FILENAME
+    if secrets_path.exists():
+        try:
+            secrets = json.loads(secrets_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as e:
+            sys.stderr.write(
+                f"FEHLER: Secrets-Datei '{secrets_path}' ist kein valides JSON: {e}\n"
+            )
+            sys.exit(1)
+        for field_name in ("host", "user", "password"):
+            if not getattr(deploy, field_name) and secrets.get(field_name):
+                setattr(deploy, field_name, secrets[field_name])
+
+    # 2) Env-Fallback für host/user (nur wenn weiterhin leer). Das Passwort
+    #    bleibt der resolve_password-Logik (Config > Env) vorbehalten.
+    if not deploy.host:
+        deploy.host = os.environ.get("WEINSPRECHSTUNDE_DEPLOY_HOST", "")
+    if not deploy.user:
+        deploy.user = os.environ.get("WEINSPRECHSTUNDE_DEPLOY_USER", "")
 
     return Config(
         import_dir=raw["import_dir"],
@@ -223,44 +250,24 @@ def resolve_password(config: Config) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _sftp_connect(host: str, user: str, password: str):
-    """SFTP-Client (paramiko) öffnen. Rückgabe: (transport, sftp)."""
-    import paramiko
+def _ftps_connect(host: str, user: str, password: str) -> "ftplib.FTP_TLS":
+    """FTP-Verbindung mit explizitem TLS (FTPES) öffnen und einloggen.
 
-    transport = paramiko.Transport((host, 22))
-    transport.connect(username=user, password=password)
-    sftp = paramiko.SFTPClient.from_transport(transport)
-    return transport, sftp
-
-
-def _upload_sftp(sftp, local_file: Path, remote_file: str) -> None:
-    """Eine lokale Datei per SFTP hochladen."""
-    sftp.put(str(local_file), remote_file)
-
-
-def _download_sftp(host: str, user: str, password: str, remote_path: str,
-                   local_path: Path) -> None:
-    """Remote-Verzeichnis rekursiv per SFTP nach local_path herunterladen."""
-    transport, sftp = _sftp_connect(host, user, password)
-    try:
-        local_path.mkdir(parents=True, exist_ok=True)
-        _sftp_download_dir(sftp, remote_path, local_path)
-    finally:
-        sftp.close()
-        transport.close()
-
-
-def _sftp_download_dir(sftp, remote_dir: str, local_dir: Path) -> None:
-    import stat
-
-    local_dir.mkdir(parents=True, exist_ok=True)
-    for entry in sftp.listdir_attr(remote_dir):
-        remote_entry = f"{remote_dir.rstrip('/')}/{entry.filename}"
-        local_entry = local_dir / entry.filename
-        if stat.S_ISDIR(entry.st_mode):
-            _sftp_download_dir(sftp, remote_entry, local_entry)
-        else:
-            sftp.get(remote_entry, str(local_entry))
+    Vorlage: scripts/ftps_probe.py. Standardmäßig wird das Serverzertifikat
+    NICHT verifiziert (``ssl._create_unverified_context``), weil der Webspace
+    ein Zertifikat mit abweichendem Hostnamen ausliefert; die Verbindung bleibt
+    dennoch TLS-verschlüsselt. Mit ``FTPS_VERIFY=1`` lässt sich die reguläre
+    Zertifikatsprüfung aktivieren.
+    """
+    verify = os.environ.get("FTPS_VERIFY", "0") != "0"
+    ctx = ssl.create_default_context() if verify else ssl._create_unverified_context()
+    ftp = ftplib.FTP_TLS(context=ctx)
+    ftp.connect(host, 21, timeout=20)
+    ftp.auth()                 # explizites TLS auf dem Kontrollkanal
+    ftp.login(user, password)  # Login über verschlüsselte Verbindung
+    ftp.prot_p()               # auch Datenkanal verschlüsseln
+    ftp.set_pasv(True)
+    return ftp
 
 
 def _upload_ftp(ftp: "ftplib.FTP", local_file: Path, remote_file: str) -> None:
@@ -271,9 +278,8 @@ def _upload_ftp(ftp: "ftplib.FTP", local_file: Path, remote_file: str) -> None:
 
 def _download_ftp(host: str, user: str, password: str, remote_path: str,
                   local_path: Path) -> None:
-    """Remote-Verzeichnis rekursiv per FTP nach local_path herunterladen."""
-    ftp = ftplib.FTP(host)
-    ftp.login(user, password)
+    """Remote-Verzeichnis rekursiv per FTPES nach local_path herunterladen."""
+    ftp = _ftps_connect(host, user, password)
     try:
         local_path.mkdir(parents=True, exist_ok=True)
         _ftp_download_dir(ftp, remote_path, local_path)
@@ -404,43 +410,12 @@ def _remote_backup(config: Config, last_name: Optional[str],
     if not names:
         return
 
-    if config.deploy.protocol == "sftp":
-        transport, sftp = _sftp_connect(config.deploy.host, config.deploy.user, password)
-        try:
-            for name in names:
-                _upload_dir_sftp(sftp, backup_dir / name, f"{remote_base.rstrip('/')}/{name}")
-        finally:
-            sftp.close()
-            transport.close()
-    else:
-        ftp = ftplib.FTP(config.deploy.host)
-        ftp.login(config.deploy.user, password)
-        try:
-            for name in names:
-                _upload_dir_ftp(ftp, backup_dir / name, f"{remote_base.rstrip('/')}/{name}")
-        finally:
-            ftp.quit()
-
-
-def _sftp_makedirs(sftp, remote_dir: str) -> None:
-    parts = remote_dir.strip("/").split("/")
-    path = ""
-    for part in parts:
-        path = f"{path}/{part}"
-        try:
-            sftp.stat(path)
-        except IOError:
-            sftp.mkdir(path)
-
-
-def _upload_dir_sftp(sftp, local_dir: Path, remote_dir: str) -> None:
-    _sftp_makedirs(sftp, remote_dir)
-    for item in local_dir.iterdir():
-        remote_item = f"{remote_dir.rstrip('/')}/{item.name}"
-        if item.is_dir():
-            _upload_dir_sftp(sftp, item, remote_item)
-        else:
-            _upload_sftp(sftp, item, remote_item)
+    ftp = _ftps_connect(config.deploy.host, config.deploy.user, password)
+    try:
+        for name in names:
+            _upload_dir_ftp(ftp, backup_dir / name, f"{remote_base.rstrip('/')}/{name}")
+    finally:
+        ftp.quit()
 
 
 def _ftp_makedirs(ftp: "ftplib.FTP", remote_dir: str) -> None:
@@ -472,22 +447,13 @@ def _upload_dir_ftp(ftp: "ftplib.FTP", local_dir: Path, remote_dir: str) -> None
 def download_remote_import(config: Config, password: str) -> None:
     """Synchronisiert deploy.remote_import_path auf den lokalen import_dir."""
     try:
-        if config.deploy.protocol == "sftp":
-            _download_sftp(
-                host=config.deploy.host,
-                user=config.deploy.user,
-                password=password,
-                remote_path=config.deploy.remote_import_path,
-                local_path=Path(config.import_dir),
-            )
-        else:
-            _download_ftp(
-                host=config.deploy.host,
-                user=config.deploy.user,
-                password=password,
-                remote_path=config.deploy.remote_import_path,
-                local_path=Path(config.import_dir),
-            )
+        _download_ftp(
+            host=config.deploy.host,
+            user=config.deploy.user,
+            password=password,
+            remote_path=config.deploy.remote_import_path,
+            local_path=Path(config.import_dir),
+        )
     except Exception as e:
         sys.stderr.write(
             f"FEHLER: Download des Import-Ordners von {config.deploy.host}:"
@@ -694,36 +660,13 @@ def phase_image_export(config: Config) -> None:
 # ---------------------------------------------------------------------------
 
 
-class PreDeployBackupError(Exception):
-    """Fehler beim Pre-Deploy-Backup von remote_path.
-
-    Eigene Exception-Klasse, damit ein Backup-Fehler in ``phase_deploy`` eine
-    eigene, klare Meldung bekommt und NICHT fälschlich als Verbindungsproblem
-    (Hostname/Passwort/Protokoll) gemeldet wird (Review-Finding).
-    """
-
-
 def phase_deploy(config: Config) -> None:
     password = resolve_password(config)
 
     try:
-        if config.deploy.protocol == "sftp":
-            _deploy_sftp(config, password)
-        else:
-            _deploy_ftp(config, password)
+        _deploy_ftp(config, password)
     except SystemExit:
         raise
-    except PreDeployBackupError as e:
-        # Das Pre-Deploy-Backup ist fehlgeschlagen. Es wurde NICHT geprunt (das
-        # Backup läuft vor dem Prune). Eigene Meldung, damit nicht fälschlich auf
-        # Hostname/Passwort/Protokoll verwiesen wird.
-        sys.stderr.write(
-            f"FEHLER: Pre-Deploy-Backup von {config.deploy.remote_path} "
-            f"fehlgeschlagen: {e}. Es wurde nichts auf dem Server gelöscht "
-            f"(Prune übersprungen). Bitte das Backup-Problem beheben und den "
-            f"Deploy erneut starten.\n"
-        )
-        sys.exit(1)
     except Exception as e:
         sys.stderr.write(
             f"FEHLER: Verbindung zum Server {config.deploy.host} fehlgeschlagen. "
@@ -734,15 +677,6 @@ def phase_deploy(config: Config) -> None:
             f"({config.deploy.protocol}) korrekt?\n"
         )
         sys.exit(1)
-
-
-# Anzahl serverseitiger Pre-Deploy-Backups, die unter
-# backup.remote_backup_dir aufbewahrt werden. Dieses Deployment-Backup ist
-# getrennt vom lokalen Import-Backup-Mechanismus (max_last_backups/
-# max_archival_backups) und hat bewusst ein eigenes, kleines Rolling-Window.
-# Per optionalem Config-Feld backup.max_predeploy_backups überschreibbar,
-# funktioniert aber ohne Config-Änderung mit diesem Default.
-MAX_PREDEPLOY_BACKUPS = 5
 
 
 def _resolve_dist_dir(base: Path = Path("frontend/dist")) -> Path:
@@ -775,221 +709,6 @@ def _resolve_dist_dir(base: Path = Path("frontend/dist")) -> Path:
     return base
 
 
-def _predeploy_remote_backup_dir(config: Config) -> tuple[str, str]:
-    """Serverseitiges Backup-Ziel ermitteln: (remote_backup_base, predeploy_name).
-
-    Das Backup landet serverseitig unter
-    ``<remote_backup_dir>/predeploy-<YYYYmmdd-HHMMSS>/`` – die Daten bleiben auf
-    dem Server, laufen NICHT über den lokalen Rechner. Fehlt die Backup-
-    Konfiguration (``config.backup``) oder ``remote_backup_dir``, ist kein Ziel
-    definiert – das ist ein harter Fehler, denn ohne Backup darf der
-    nachfolgende Prune nicht laufen.
-    """
-    if not config.backup or not config.backup.remote_backup_dir:
-        raise PreDeployBackupError(
-            "backup.remote_backup_dir fehlt. Ohne serverseitiges Backup-Ziel "
-            "darf nicht geprunt werden."
-        )
-    remote_base = config.backup.remote_backup_dir.rstrip("/")
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    return remote_base, f"predeploy-{timestamp}"
-
-
-def _max_predeploy_backups(config: Config) -> int:
-    """Aufzubewahrende Pre-Deploy-Backups: Config-Override oder Default 5."""
-    if config.backup and config.backup.max_predeploy_backups is not None:
-        return config.backup.max_predeploy_backups
-    return MAX_PREDEPLOY_BACKUPS
-
-
-def _predeploy_server_backup_sftp(transport, sftp, config: Config,
-                                  remote_path: str) -> None:
-    """Pre-Deploy-Backup: remote_path serverseitig kopieren (vor Prune).
-
-    Kopiert den aktuellen Zustand von ``remote_path`` rekursiv (wie ``cp -a``)
-    in einen zeitgestempelten Unterordner
-    ``<remote_backup_dir>/predeploy-<ts>/`` – die Daten bleiben auf dem Server
-    und laufen NICHT durch den lokalen Rechner. Umgesetzt per SSH-Exec über
-    denselben paramiko-Transport (SFTP kennt keinen nativen rekursiven
-    Server-Copy). Dieses Backup ist getrennt vom Import-Backup
-    (``_remote_backup``/``phase_backup``).
-
-    Fehlertoleranz: Schlägt das Backup grundsätzlich fehl (Exec-/Verbindungs-
-    fehler oder von der Shell gemeldeter Fehler), wird eine
-    ``PreDeployBackupError`` geworfen, damit der Deploy NICHT weiterläuft und
-    prunt – lieber sauber scheitern, bevor auf dem Server gelöscht wird.
-    """
-    remote_base, name = _predeploy_remote_backup_dir(config)
-    target = f"{remote_base}/{name}"
-    try:
-        _ssh_exec(
-            transport,
-            f"mkdir -p {_shq(target)} && "
-            f"cp -a {_shq(remote_path.rstrip('/'))}/. {_shq(target)}/",
-        )
-    except Exception as e:
-        raise PreDeployBackupError(str(e)) from e
-    _prune_predeploy_backups_server(transport, remote_base,
-                                    _max_predeploy_backups(config))
-
-
-def _predeploy_server_backup_ftp(ftp, config: Config, remote_path: str) -> None:
-    """Pre-Deploy-Backup serverseitig über FTP (vor Prune).
-
-    FTP kennt weder SSH-Exec noch einen nativen rekursiven Server-Copy. Diese
-    Variante bleibt dennoch server-seitig: Sie kopiert jede Datei unter
-    ``remote_path`` serverseitig per ``RNFR``/``RNTO`` ist NICHT möglich (das
-    verschiebt statt zu kopieren), daher wird – wo der FTP-Server die
-    SITE-COPY-/Kopier-Erweiterung bietet – ``SITE CPTO`` verwendet; andernfalls
-    ist eine reine serverseitige Kopie über Standard-FTP nicht möglich.
-
-    Umsetzung: Für jede Datei unter ``remote_path`` wird versucht, sie
-    serverseitig in das zeitgestempelte Ziel zu kopieren, ohne die Daten lokal
-    zwischenzuspeichern. Scheitert dies grundsätzlich, wird eine
-    ``PreDeployBackupError`` geworfen und NICHT geprunt (fail-closed).
-    """
-    remote_base, name = _predeploy_remote_backup_dir(config)
-    target = f"{remote_base}/{name}"
-    try:
-        _ftp_makedirs(ftp, target)
-        _ftp_server_copy_dir(ftp, remote_path.rstrip("/"), target)
-    except Exception as e:
-        raise PreDeployBackupError(str(e)) from e
-    _prune_predeploy_backups_server_ftp(ftp, remote_base,
-                                        _max_predeploy_backups(config))
-
-
-def _shq(path: str) -> str:
-    """Pfad fürs Shell-Exec sicher quoten (einfache Anführungszeichen)."""
-    return "'" + path.replace("'", "'\\''") + "'"
-
-
-def _ssh_exec(transport, command: str) -> str:
-    """Kommando über eine SSH-Exec-Session auf dem Server ausführen.
-
-    Nutzt denselben paramiko-Transport wie die SFTP-Verbindung. Wirft bei einem
-    Exit-Status != 0 eine Exception mit stderr-Inhalt, damit der Aufrufer ein
-    gescheitertes serverseitiges Backup erkennt.
-    """
-    channel = transport.open_session()
-    try:
-        channel.exec_command(command)
-        stdout = channel.makefile("rb").read()
-        stderr = channel.makefile_stderr("rb").read()
-        status = channel.recv_exit_status()
-    finally:
-        channel.close()
-    if status != 0:
-        msg = stderr.decode(errors="replace").strip() or f"exit status {status}"
-        raise RuntimeError(f"SSH-Exec fehlgeschlagen ({command!r}): {msg}")
-    return stdout.decode(errors="replace")
-
-
-def _ftp_server_copy_dir(ftp, remote_src: str, remote_dst: str) -> None:
-    """Verzeichnis serverseitig per FTP kopieren (ohne lokalen Umweg).
-
-    Rekursiv über ``remote_src``; Dateien werden per ``SITE CPTO`` (sofern vom
-    Server unterstützt) serverseitig dupliziert. Unterstützt der Server keine
-    serverseitige Kopie, schlägt ``sendcmd`` fehl und die Exception propagiert
-    nach oben (fail-closed, kein Prune).
-    """
-    _ftp_makedirs(ftp, remote_dst)
-    for name in ftp.nlst(remote_src):
-        base = name.rsplit("/", 1)[-1]
-        if base in (".", ".."):
-            continue
-        src_entry = name if "/" in name else f"{remote_src.rstrip('/')}/{name}"
-        dst_entry = f"{remote_dst.rstrip('/')}/{base}"
-        if _ftp_is_dir(ftp, src_entry):
-            _ftp_server_copy_dir(ftp, src_entry, dst_entry)
-        else:
-            # Serverseitige Kopie: SITE CPFR/CPTO (ProFTPD mod_copy). Bleibt
-            # vollständig auf dem Server – keine RETR/STOR über den Client.
-            ftp.sendcmd(f"SITE CPFR {src_entry}")
-            ftp.sendcmd(f"SITE CPTO {dst_entry}")
-
-
-def _prune_predeploy_backups_server(transport, remote_base: str,
-                                    max_count: int) -> None:
-    """Nur die neuesten max_count predeploy-Ordner serverseitig behalten.
-
-    Die predeploy-Ordner sind zeitstempel-benannt, daher ergibt lexikografisches
-    Sortieren die chronologische Reihenfolge. Löschung per SSH-Exec; best effort:
-    Fehler hier dürfen das bereits erfolgte Backup nicht scheitern lassen.
-    """
-    try:
-        listing = _ssh_exec(
-            transport,
-            f"ls -1 {_shq(remote_base)} 2>/dev/null || true",
-        )
-    except Exception as e:
-        sys.stderr.write(
-            f"WARNUNG: Pre-Deploy-Backup-Retention übersprungen "
-            f"(Listing fehlgeschlagen): {e}\n"
-        )
-        return
-    entries = sorted(
-        line.strip() for line in listing.splitlines()
-        if line.strip().startswith("predeploy-")
-    )
-    while len(entries) > max_count:
-        oldest = entries.pop(0)
-        path = f"{remote_base.rstrip('/')}/{oldest}"
-        try:
-            _ssh_exec(transport, f"rm -rf {_shq(path)}")
-        except Exception as e:
-            sys.stderr.write(
-                f"WARNUNG: Pre-Deploy-Backup {path} konnte nicht gelöscht "
-                f"werden: {e}\n"
-            )
-
-
-def _prune_predeploy_backups_server_ftp(ftp, remote_base: str,
-                                        max_count: int) -> None:
-    """Serverseitige Pre-Deploy-Backup-Retention über FTP.
-
-    Entfernt die ältesten ``predeploy-``Ordner unter ``remote_base``, sodass
-    maximal ``max_count`` erhalten bleiben. Best effort: Fehler hier dürfen das
-    bereits erfolgte Backup nicht scheitern lassen.
-    """
-    try:
-        names = ftp.nlst(remote_base)
-    except Exception as e:
-        sys.stderr.write(
-            f"WARNUNG: Pre-Deploy-Backup-Retention übersprungen "
-            f"(Listing fehlgeschlagen): {e}\n"
-        )
-        return
-    entries = sorted(
-        n.rsplit("/", 1)[-1] for n in names
-        if n.rsplit("/", 1)[-1].startswith("predeploy-")
-    )
-    while len(entries) > max_count:
-        oldest = entries.pop(0)
-        path = f"{remote_base.rstrip('/')}/{oldest}"
-        try:
-            _ftp_rmtree(ftp, path)
-        except Exception as e:
-            sys.stderr.write(
-                f"WARNUNG: Pre-Deploy-Backup {path} konnte nicht gelöscht "
-                f"werden: {e}\n"
-            )
-
-
-def _ftp_rmtree(ftp, remote_dir: str) -> None:
-    """Verzeichnis rekursiv per FTP löschen."""
-    for name in ftp.nlst(remote_dir):
-        base = name.rsplit("/", 1)[-1]
-        if base in (".", ".."):
-            continue
-        entry = name if "/" in name else f"{remote_dir.rstrip('/')}/{name}"
-        if _ftp_is_dir(ftp, entry):
-            _ftp_rmtree(ftp, entry)
-        else:
-            ftp.delete(entry)
-    ftp.rmd(remote_dir)
-
-
 def _local_dist_files(dist_dir: Path) -> dict[str, Path]:
     """Relative Pfad -> lokale Datei für alle Dateien im dist-Ordner."""
     result: dict[str, Path] = {}
@@ -1005,21 +724,24 @@ def _protected_prefixes(config: Config) -> tuple[set[str], list[str]]:
     """Pfade, die der Prune unter remote_path NIE löschen darf.
 
     Gibt (exakte Relativpfade, Verzeichnis-Präfixe) zurück. Geschützt sind die
-    hochgeladene ``wines.json`` (Basename aus ``export_path``) sowie – falls
-    ``remote_images_path`` unterhalb von ``remote_path`` liegt – der komplette
-    Bilderordner. So kann der dist-Prune diese nie entfernen (Req 6.6).
+    hochgeladene ``wines.json`` (Basename aus ``export_path``) sowie – falls sie
+    unterhalb von ``remote_path`` liegen – der komplette Bilderordner
+    (``remote_images_path``) und der Daten-/Import-Ordner
+    (``remote_import_path``). So kann der dist-Prune diese nie entfernen
+    (Req 6.6).
     """
     base = config.deploy.remote_path.rstrip("/")
     exact: set[str] = {Path(config.export_path).name}
     prefixes: list[str] = []
 
-    images = config.deploy.remote_images_path.rstrip("/")
-    if images == base:
-        # Bilder liegen direkt unter remote_path -> nichts weiter zu tun,
-        # der Ordner selbst ist remote_base.
-        prefixes.append("")
-    elif images.startswith(base + "/"):
-        prefixes.append(images[len(base) + 1:] + "/")
+    for sub in (config.deploy.remote_images_path, config.deploy.remote_import_path):
+        sub = sub.rstrip("/")
+        if sub == base:
+            # Ordner liegt direkt unter remote_path -> der Ordner selbst ist
+            # remote_base, nichts weiter zu schützen.
+            prefixes.append("")
+        elif sub.startswith(base + "/"):
+            prefixes.append(sub[len(base) + 1:] + "/")
     return exact, prefixes
 
 
@@ -1029,105 +751,15 @@ def _is_protected(rel: str, exact: set[str], prefixes: list[str]) -> bool:
     return any(prefix and rel.startswith(prefix) for prefix in prefixes)
 
 
-def _deploy_sftp(config: Config, password: str) -> None:
-    transport, sftp = _sftp_connect(config.deploy.host, config.deploy.user, password)
-    try:
-        # Tatsächlichen Browser-Build-Ordner als Deploy-Wurzel verwenden, damit
-        # index.html/assets direkt unter remote_path landen (Req 6.7).
-        dist_dir = _resolve_dist_dir()
-        local_files = _local_dist_files(dist_dir)
-        remote_base = config.deploy.remote_path
-
-        # dist-Ordner: Upload mit Timestamp-Vergleich
-        _sftp_makedirs(sftp, remote_base)
-        for rel, local_file in local_files.items():
-            remote_file = f"{remote_base.rstrip('/')}/{rel}"
-            _sftp_makedirs(sftp, remote_file.rsplit("/", 1)[0])
-            if not _sftp_up_to_date(sftp, remote_file, local_file):
-                _upload_sftp(sftp, local_file, remote_file)
-
-        # Pre-Deploy-Backup des aktuellen Server-Zustands VOR dem Prune:
-        # remote_path wird SERVERSEITIG nach
-        # remote_backup_dir/predeploy-<ts>/ kopiert (SSH-Exec, kein Download).
-        # Schlägt es grundsätzlich fehl, propagiert die Exception und der Prune
-        # läuft NICHT – wir löschen nie ohne vorheriges Backup.
-        _predeploy_server_backup_sftp(transport, sftp, config, remote_base)
-
-        # dist-Ordner: veraltete Serverdateien löschen (wines.json/Bilder NIE)
-        exact, prefixes = _protected_prefixes(config)
-        _sftp_prune(sftp, remote_base, set(local_files.keys()), exact, prefixes)
-
-        # wines.json unter remote_path ablegen (nie löschen)
-        wines_json = Path(config.export_path)
-        if wines_json.exists():
-            remote_wines = f"{remote_base.rstrip('/')}/{wines_json.name}"
-            if not _sftp_up_to_date(sftp, remote_wines, wines_json):
-                _upload_sftp(sftp, wines_json, remote_wines)
-
-        # Bilder unter remote_images_path ablegen (nie löschen)
-        images_dir = Path(config.image_export_dir)
-        if images_dir.exists():
-            _sftp_makedirs(sftp, config.deploy.remote_images_path)
-            for img in images_dir.iterdir():
-                if img.is_file():
-                    remote_img = f"{config.deploy.remote_images_path.rstrip('/')}/{img.name}"
-                    if not _sftp_up_to_date(sftp, remote_img, img):
-                        _upload_sftp(sftp, img, remote_img)
-    finally:
-        sftp.close()
-        transport.close()
-
-
-def _sftp_up_to_date(sftp, remote_file: str, local_file: Path) -> bool:
-    """True, wenn die Remote-Datei nicht älter ist als die lokale Datei."""
-    try:
-        remote_mtime = sftp.stat(remote_file).st_mtime
-    except IOError:
-        return False
-    return remote_mtime >= local_file.stat().st_mtime
-
-
-def _sftp_prune(sftp, remote_base: str, keep: set[str],
-                protected_exact: Optional[set[str]] = None,
-                protected_prefixes: Optional[list[str]] = None) -> None:
-    """Dateien im remote dist-Ordner löschen, die lokal nicht mehr existieren.
-
-    ``protected_exact``/``protected_prefixes`` schützen wines.json und den
-    Bilderordner, falls diese unter remote_base liegen (Req 6.6).
-    """
-    import stat as stat_mod
-
-    exact = protected_exact or set()
-    prefixes = protected_prefixes or []
-
-    def walk(remote_dir: str, prefix: str) -> None:
-        try:
-            entries = sftp.listdir_attr(remote_dir)
-        except IOError:
-            return
-        for entry in entries:
-            rel = f"{prefix}{entry.filename}"
-            remote_entry = f"{remote_dir.rstrip('/')}/{entry.filename}"
-            if stat_mod.S_ISDIR(entry.st_mode):
-                walk(remote_entry, f"{rel}/")
-            elif rel not in keep and not _is_protected(rel, exact, prefixes):
-                try:
-                    sftp.remove(remote_entry)
-                except IOError:
-                    pass
-
-    walk(remote_base, "")
-
-
 def _deploy_ftp(config: Config, password: str) -> None:
-    ftp = ftplib.FTP(config.deploy.host)
-    ftp.login(config.deploy.user, password)
+    ftp = _ftps_connect(config.deploy.host, config.deploy.user, password)
     try:
-        # Browser-Build-Ordner als Deploy-Wurzel (Req 6.7), identisch zu SFTP.
+        # Browser-Build-Ordner als Deploy-Wurzel (Req 6.7).
         dist_dir = _resolve_dist_dir()
         local_files = _local_dist_files(dist_dir)
         remote_base = config.deploy.remote_path
 
+        # 1) dist-Ordner hochladen (Timestamp-Vergleich).
         _ftp_makedirs(ftp, remote_base)
         for rel, local_file in local_files.items():
             remote_file = f"{remote_base.rstrip('/')}/{rel}"
@@ -1135,21 +767,28 @@ def _deploy_ftp(config: Config, password: str) -> None:
             if not _ftp_up_to_date(ftp, remote_file, local_file):
                 _upload_ftp(ftp, local_file, remote_file)
 
-        # Pre-Deploy-Backup VOR dem Prune: remote_path wird SERVERSEITIG nach
-        # remote_backup_dir/predeploy-<ts>/ kopiert (SITE CPFR/CPTO, kein
-        # Download). Fail-closed: Schlägt das Backup fehl, wird abgebrochen,
-        # bevor geprunt wird – es wird nie ohne vorheriges Backup gelöscht.
-        _predeploy_server_backup_ftp(ftp, config, remote_base)
-
+        # 2) Prune: veraltete Serverdateien NUR unter /wine_app löschen;
+        #    images/, data/ und wines.json bleiben geschützt (Req 6.6).
         exact, prefixes = _protected_prefixes(config)
         _ftp_prune(ftp, remote_base, set(local_files.keys()), exact, prefixes)
 
+        # 3) wines.json (und optional wine-schema.json) nach
+        #    remote_import_path ablegen (nie löschen).
+        import_base = config.deploy.remote_import_path
         wines_json = Path(config.export_path)
         if wines_json.exists():
-            remote_wines = f"{remote_base.rstrip('/')}/{wines_json.name}"
+            _ftp_makedirs(ftp, import_base)
+            remote_wines = f"{import_base.rstrip('/')}/{wines_json.name}"
             if not _ftp_up_to_date(ftp, remote_wines, wines_json):
                 _upload_ftp(ftp, wines_json, remote_wines)
+        schema_json = wines_json.parent / "wine-schema.json"
+        if schema_json.exists():
+            _ftp_makedirs(ftp, import_base)
+            remote_schema = f"{import_base.rstrip('/')}/{schema_json.name}"
+            if not _ftp_up_to_date(ftp, remote_schema, schema_json):
+                _upload_ftp(ftp, schema_json, remote_schema)
 
+        # 4) Bilder nach remote_images_path ablegen (nie löschen).
         images_dir = Path(config.image_export_dir)
         if images_dir.exists():
             _ftp_makedirs(ftp, config.deploy.remote_images_path)

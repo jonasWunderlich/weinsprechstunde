@@ -122,20 +122,20 @@ def make_uploads(tmp: Path, files: dict) -> Path:
 def make_config(**overrides):
     """Baut ein Config-Objekt mit sinnvollen Defaults für Tests."""
     deploy = weinimport.DeployConfig(
-        protocol=overrides.pop("protocol", "sftp"),
+        protocol=overrides.pop("protocol", "ftpes"),
         host=overrides.pop("host", "example.com"),
         user=overrides.pop("user", "myuser"),
         password=overrides.pop("password", ""),
-        remote_path=overrides.pop("remote_path", "/var/www/html"),
-        remote_images_path=overrides.pop("remote_images_path", "/var/www/images"),
-        remote_import_path=overrides.pop("remote_import_path", "/var/www/import"),
+        remote_path=overrides.pop("remote_path", "/wine_app"),
+        remote_images_path=overrides.pop("remote_images_path", "/wine_app/images"),
+        remote_import_path=overrides.pop("remote_import_path", "/wine_app/data"),
     )
     editor = weinimport.EditorConfig(path="/editor", password_hash="")
     backup = overrides.pop("backup", None)
     defaults = dict(
         import_dir="./import",
         import_source="local",
-        export_path="./frontend/src/assets/wines.json",
+        export_path="./export/data/wines.json",
         scaffold_mode=True,
         image_export_dir="./export/images",
         image_resize_mode="width",

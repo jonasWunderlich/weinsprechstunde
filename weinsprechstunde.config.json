@@ -1,23 +1,20 @@
 {
   "import_dir": "./import",
   "import_source": "local",
-  "export_path": "./frontend/src/assets/wines.json",
+  "export_path": "./export/data/wines.json",
   "scaffold_mode": true,
   "image_export_dir": "./export/images",
   "image_resize_mode": "width",
   "image_resize_px": 1200,
   "deploy": {
-    "protocol": "sftp",
-    "host": "example.com",
-    "user": "myuser",
-    "password": "",
-    "remote_path": "/var/www/html",
-    "remote_images_path": "/var/www/images",
-    "remote_import_path": "/var/www/import"
+    "protocol": "ftpes",
+    "remote_path": "/wine_app",
+    "remote_images_path": "/wine_app/images",
+    "remote_import_path": "/wine_app/data"
   },
   "backup": {
     "backup_dir": "./backup",
-    "remote_backup_dir": "/var/www/backup",
+    "remote_backup_dir": "/backup",
     "max_last_backups": 10,
     "max_archival_backups": 24,
     "archival_interval_days": 30

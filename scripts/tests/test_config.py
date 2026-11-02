@@ -104,6 +104,106 @@ def test_load_config_without_backup(tmp_path):
     assert config.scaffold_mode is False
 
 
+# --- Secrets-Auflösung (Config > Secrets-Datei > Env) ---------------------
+
+
+def _write_config(tmp_path, deploy_overrides=None):
+    """Minimale Config-Datei; deploy-Felder host/user/password per Override leer
+    oder gesetzt. Rückgabe: Pfad zur Config."""
+    deploy = {
+        "protocol": "ftpes",
+        "host": "",
+        "user": "",
+        "password": "",
+        "remote_path": "/wine_app",
+        "remote_images_path": "/wine_app/images",
+        "remote_import_path": "/wine_app/data",
+    }
+    deploy.update(deploy_overrides or {})
+    cfg_path = tmp_path / "weinsprechstunde.config.json"
+    cfg_path.write_text(
+        json.dumps(
+            {
+                "import_dir": "./import",
+                "import_source": "local",
+                "export_path": "./export/data/wines.json",
+                "scaffold_mode": True,
+                "image_export_dir": "./export/images",
+                "image_resize_mode": "width",
+                "image_resize_px": 1200,
+                "deploy": deploy,
+                "editor": {"path": "/e", "password_hash": ""},
+            }
+        ),
+        encoding="utf-8",
+    )
+    return cfg_path
+
+
+def _write_secrets(tmp_path, data):
+    secrets = tmp_path / "weinsprechstunde.secrets.json"
+    secrets.write_text(json.dumps(data), encoding="utf-8")
+    return secrets
+
+
+def test_config_without_secrets_file_is_not_an_error(tmp_path, monkeypatch):
+    monkeypatch.delenv("WEINSPRECHSTUNDE_DEPLOY_HOST", raising=False)
+    monkeypatch.delenv("WEINSPRECHSTUNDE_DEPLOY_USER", raising=False)
+    cfg_path = _write_config(tmp_path)
+    config = wi.load_config(str(cfg_path))
+    # Keine Secrets-Datei, keine Env -> Felder bleiben leer, kein Fehler.
+    assert config.deploy.host == ""
+    assert config.deploy.user == ""
+    assert config.deploy.password == ""
+
+
+def test_secrets_file_fills_host_user_password(tmp_path, monkeypatch):
+    monkeypatch.delenv("WEINSPRECHSTUNDE_DEPLOY_HOST", raising=False)
+    monkeypatch.delenv("WEINSPRECHSTUNDE_DEPLOY_USER", raising=False)
+    cfg_path = _write_config(tmp_path)
+    _write_secrets(tmp_path, {"host": "s-host", "user": "s-user", "password": "s-pass"})
+    config = wi.load_config(str(cfg_path))
+    assert config.deploy.host == "s-host"
+    assert config.deploy.user == "s-user"
+    assert config.deploy.password == "s-pass"
+
+
+def test_config_values_take_precedence_over_secrets(tmp_path, monkeypatch):
+    monkeypatch.delenv("WEINSPRECHSTUNDE_DEPLOY_HOST", raising=False)
+    monkeypatch.delenv("WEINSPRECHSTUNDE_DEPLOY_USER", raising=False)
+    cfg_path = _write_config(
+        tmp_path,
+        {"host": "cfg-host", "user": "cfg-user", "password": "cfg-pass"},
+    )
+    _write_secrets(tmp_path, {"host": "s-host", "user": "s-user", "password": "s-pass"})
+    config = wi.load_config(str(cfg_path))
+    # Config > Secrets.
+    assert config.deploy.host == "cfg-host"
+    assert config.deploy.user == "cfg-user"
+    assert config.deploy.password == "cfg-pass"
+
+
+def test_secrets_take_precedence_over_env(tmp_path, monkeypatch):
+    monkeypatch.setenv("WEINSPRECHSTUNDE_DEPLOY_HOST", "env-host")
+    monkeypatch.setenv("WEINSPRECHSTUNDE_DEPLOY_USER", "env-user")
+    cfg_path = _write_config(tmp_path)
+    _write_secrets(tmp_path, {"host": "s-host", "user": "s-user"})
+    config = wi.load_config(str(cfg_path))
+    # Secrets > Env.
+    assert config.deploy.host == "s-host"
+    assert config.deploy.user == "s-user"
+
+
+def test_env_fills_host_user_when_config_and_secrets_empty(tmp_path, monkeypatch):
+    monkeypatch.setenv("WEINSPRECHSTUNDE_DEPLOY_HOST", "env-host")
+    monkeypatch.setenv("WEINSPRECHSTUNDE_DEPLOY_USER", "env-user")
+    cfg_path = _write_config(tmp_path)
+    config = wi.load_config(str(cfg_path))
+    # Keine Config-Werte, keine Secrets-Datei -> Env greift.
+    assert config.deploy.host == "env-host"
+    assert config.deploy.user == "env-user"
+
+
 def test_load_wine_schema_missing_exits(tmp_path, capsys):
     with pytest.raises(SystemExit) as exc:
         wi.load_wine_schema(str(tmp_path / "missing-schema.json"))
