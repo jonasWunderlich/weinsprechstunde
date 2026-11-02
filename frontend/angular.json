@@ -25,13 +25,8 @@
             "inlineStyleLanguage": "scss",
             "assets": [
               {
-                "glob": "**/*",
+                "glob": "favicon.ico",
                 "input": "public"
-              },
-              {
-                "glob": "**/*",
-                "input": "src/assets",
-                "output": "assets"
               }
             ],
             "styles": [
@@ -57,7 +52,23 @@
             "development": {
               "optimization": false,
               "extractLicenses": false,
-              "sourceMap": true
+              "sourceMap": true,
+              "assets": [
+                {
+                  "glob": "favicon.ico",
+                  "input": "public"
+                },
+                {
+                  "glob": "**/*",
+                  "input": "public/data",
+                  "output": "data"
+                },
+                {
+                  "glob": "**/*",
+                  "input": "public/images",
+                  "output": "images"
+                }
+              ]
             }
           },
           "defaultConfiguration": "production"

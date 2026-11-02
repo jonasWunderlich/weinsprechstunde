@@ -20,8 +20,8 @@ export class WineDataService {
     if (this.loadState() !== 'idle') return; // kein Reload bei Routenwechsel
     this.loadState.set('loading');
     forkJoin({
-      wines: this.http.get<Wine[]>('assets/wines.json'),
-      schema: this.http.get<WineSchemaField[]>('assets/wine-schema.json'),
+      wines: this.http.get<Wine[]>('data/wines.json'),
+      schema: this.http.get<WineSchemaField[]>('data/wine-schema.json'),
     })
       .pipe(
         catchError((err) => {

@@ -22,8 +22,8 @@ describe('WineDataService', () => {
     service.loadAll();
     expect(service.loadState()).toBe('loading');
 
-    const wReq = httpMock.expectOne('assets/wines.json');
-    const sReq = httpMock.expectOne('assets/wine-schema.json');
+    const wReq = httpMock.expectOne('data/wines.json');
+    const sReq = httpMock.expectOne('data/wine-schema.json');
     wReq.flush([{ name: 'A' }]);
     sReq.flush([{ field: 'name', type: 'text', filter_type: 'text-search', default_filter: true }]);
 
@@ -34,8 +34,8 @@ describe('WineDataService', () => {
 
   it('loading → error bei HTTP-Fehler eines Requests', () => {
     service.loadAll();
-    const wReq = httpMock.expectOne('assets/wines.json');
-    const sReq = httpMock.expectOne('assets/wine-schema.json');
+    const wReq = httpMock.expectOne('data/wines.json');
+    const sReq = httpMock.expectOne('data/wine-schema.json');
     wReq.flush('nope', { status: 500, statusText: 'err' });
     // forkJoin bricht den Parallel-Request ab; die Testbackend-Anfrage sauber abschließen.
     if (!sReq.cancelled) sReq.flush([]);
@@ -44,10 +44,10 @@ describe('WineDataService', () => {
 
   it('zweiter loadAll() ist No-op', () => {
     service.loadAll();
-    httpMock.expectOne('assets/wines.json').flush([]);
-    httpMock.expectOne('assets/wine-schema.json').flush([]);
+    httpMock.expectOne('data/wines.json').flush([]);
+    httpMock.expectOne('data/wine-schema.json').flush([]);
     expect(service.loadState()).toBe('loaded');
     service.loadAll();
-    httpMock.expectNone('assets/wines.json');
+    httpMock.expectNone('data/wines.json');
   });
 });

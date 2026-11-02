@@ -1,0 +1,27 @@
+{
+  "id": "FEAT-002",
+  "type": "feat",
+  "description": "Angular-Frontend strikt von Daten und Bildern entkoppeln (Option B): wines.json und wine-schema.json nicht mehr in den Build buendeln, sondern zur Laufzeit aus data/ laden; Bilder weiter absolut unter /images/ referenzieren, aber nicht mehr im Production-Build buendeln. Gewaehlte, @angular/build:application-konsistente Loesung: assets pro Build-Configuration ueberschreiben - production clean (nur favicon), development liefert public/data und public/images fuer ng serve. Haengt von FEAT-001 ab (export_path -> ./export/data/wines.json, remote_import_path -> /wine_app/data), weil der Ladepfad und das Deploy-Ziel dort definiert werden.",
+  "status": "completed",
+  "steps": [
+    "frontend/public/data neu als Symlink auf ../../export/data anlegen (zeigt auf den Ordner, in den FEAT-001 wines.json schreibt). frontend/public/images -> ../../export/images existiert bereits und bleibt.",
+    "export/data/wine-schema.json bereitstellen: die bisherige frontend/src/assets/wine-schema.json nach export/data/wine-schema.json verschieben/kopieren, sodass sie lokal (public/data) und per Deploy (remote_import_path) ausgeliefert wird. Die Projekt-Root-Datei wine-schema.json bleibt die Python-Schema-Quelle und wird NICHT angefasst.",
+    "frontend/angular.json architect.build.options.assets: auf nur [{\"glob\":\"favicon.ico\",\"input\":\"public\"}] reduzieren (den src/assets-Glob und den pauschalen public/**-Glob entfernen, damit weder images/ noch assets/wines.json standardmaessig in den Build gelangen).",
+    "frontend/angular.json configurations.production: KEINE zusaetzlichen assets (bleibt beim Top-Level -> dist clean). configurations.development: assets ueberschreiben mit favicon + {\"glob\":\"**/*\",\"input\":\"public/data\",\"output\":\"data\"} + {\"glob\":\"**/*\",\"input\":\"public/images\",\"output\":\"images\"}, damit ng serve /data/wines.json, /data/wine-schema.json und /images/<datei> lokal ausliefert.",
+    "frontend/src/app/services/wine-data.service.ts loadAll(): 'assets/wines.json' -> 'data/wines.json' und 'assets/wine-schema.json' -> 'data/wine-schema.json'.",
+    "frontend/src/app/services/wine-data.service.spec.ts: alle httpMock.expectOne/expectNone von 'assets/wines.json' auf 'data/wines.json' und 'assets/wine-schema.json' auf 'data/wine-schema.json' umstellen (alle 3 Testfaelle).",
+    "frontend/src/app/models/wine-util.ts IMAGE_BASE='/images/' NICHT aendern; wine-util.spec.ts (mediaSrc -> /images/a.jpg) bleibt gueltig und unveraendert."
+  ],
+  "acceptance_criteria": [
+    "'cd frontend && npx ng test --watch=false' ist vollstaendig gruen (Baseline 69); wine-data.service.spec.ts erwartet data/wines.json + data/wine-schema.json; wine-util.spec.ts (mediaSrc /images/) bleibt gruen.",
+    "'cd frontend && npx ng build' ist erfolgreich und 'ls dist/ng-weinsprechstunde/browser' enthaelt KEIN images/ und 'ls dist/ng-weinsprechstunde/browser/assets' enthaelt KEIN wines.json (beide Checks ausfuehren und im findings-Feld melden).",
+    "WineDataService laedt data/wines.json und data/wine-schema.json (relativ, base-href-sicher); IMAGE_BASE bleibt '/images/'."
+  ],
+  "verification": [
+    "cd frontend && npx ng test --watch=false",
+    "cd frontend && npx ng build",
+    "ls frontend/dist/ng-weinsprechstunde/browser && ls frontend/dist/ng-weinsprechstunde/browser/assets"
+  ],
+  "blocked_reason": null,
+  "findings": "Implemented Angular data/image decoupling (Option B). Changes: (1) frontend/public/data -> ../../export/data symlink created; public/images symlink already existed. (2) wine-schema.json moved via 'git mv' from frontend/src/assets/ to export/data/wine-schema.json (tracking preserved); project-root wine-schema.json untouched. (3) angular.json top-level assets reduced to only [{glob:favicon.ico,input:public}] (removed src/assets glob and public/** glob). (4) configurations.development overrides assets with favicon + public/data->data + public/images->images for ng serve; configurations.production adds no assets (stays clean). (5) wine-data.service.ts loadAll(): assets/wines.json->data/wines.json, assets/wine-schema.json->data/wine-schema.json. (6) wine-data.service.spec.ts: all 3 test cases now expectOne/expectNone on data/*.json. (7) IMAGE_BASE and wine-util.spec.ts left unchanged.\n\nVerification (all run on this commit): 'npx ng test --watch=false' => 69 passed (10 files), matches baseline. NOTE: filter.service.spec.ts contains a fast-check property-based test (text-search) that is flaky/randomized — it failed once then passed on identical re-run; it is unrelated to FEAT-002 (my changes only touched wine-data.service + angular.json). 'npx ng build' => success. Output checks: 'ls frontend/dist/ng-weinsprechstunde/browser' => favicon.ico, index.html, main-*.js, styles-*.css (NO images/). 'ls frontend/dist/ng-weinsprechstunde/browser/assets' => directory does not exist (NO wines.json). All acceptance criteria satisfied.\n\nNote for later steps: export/data/wines.json is NOT present locally (generated by export phase); .gitignore currently ignores export/images/* but not export/data/* — export/data/wine-schema.json is now tracked. Did not touch .gitignore (out of FEAT-002 scope)."
+}
