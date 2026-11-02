@@ -1,0 +1,38 @@
+.nav-title {
+  background: rgb(238, 238, 238);
+  border-radius: 50px;
+  padding: 4px 12px;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.nav-title-label {
+  display: none;
+  color: black;
+}
+
+.nav-title-value {
+  text-decoration: none;
+}
+
+.reset-filter {
+  font-size: 18px;
+  background: none;
+  border: none;
+  padding: 0;
+  margin-right: -6px;
+}
+
+@media (min-width: 480px) {
+  .nav-title {
+    font-size: 1.5em;
+  }
+  .nav-title-label {
+    display: inline;
+  }
+  .nav-title-value {
+    text-decoration: underline;
+  }
+}

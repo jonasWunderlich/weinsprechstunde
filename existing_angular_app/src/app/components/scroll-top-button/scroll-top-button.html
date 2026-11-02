@@ -1,0 +1,13 @@
+<button class="scroll-to-top-btn" [class.visible]="isVisible()" (click)="scrollToTop()" aria-label="Nach oben scrollen">
+  ↑
+</button>
+
+<button
+  type="button"
+  class="show-infos-btn"
+  [class.visible]="isVisible()"
+  [class.active]="!showInfos"
+  (click)="showInfosChange.emit(!showInfos)"
+>
+  𝒊
+</button>

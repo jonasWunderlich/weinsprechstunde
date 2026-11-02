@@ -1,10 +1,13 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
-import { WineSchemaField } from '../../models/wine-schema.model';
 import { WineDataService } from '../../services/wine-data.service';
 import { FilterService } from '../../services/filter.service';
-import { FilterFieldComponent } from './filter-field/filter-field';
+import { FilterFieldComponent, FilterDescriptor } from './filter-field/filter-field';
 import { SortButtonComponent } from '../sort-button/sort-button';
 
+/**
+ * Steuerzeile: Freitextsuche (immer sichtbar) + über „Mehr Filter" einzeln
+ * zuschaltbare, optionale Filter. Jede Range-Grenze ist ein eigener Filter.
+ */
 @Component({
   selector: 'app-controls-row',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -16,29 +19,43 @@ export class ControlsRowComponent {
   private readonly data = inject(WineDataService);
   readonly fs = inject(FilterService);
 
-  readonly STANDARD_FIELDS = ['name', 'grape', 'rating', 'tasting_date'];
+  // Der einzige fest sichtbare Filter: die Freitextsuche.
+  readonly searchDescriptor: FilterDescriptor = {
+    key: 'search',
+    label: 'Filter',
+    kind: 'text-search',
+  };
 
-  readonly filterableFields = computed(() =>
-    this.data.schema().filter((f) => f.filter_type !== null),
-  );
+  /**
+   * Katalog aller optional zuschaltbaren Filter. Reihenfolge = Anzeigereihenfolge
+   * im „Mehr Filter"-Menü. Range-Grenzen sind bewusst einzeln aufgeführt.
+   */
+  readonly OPTIONAL_DESCRIPTORS: FilterDescriptor[] = [
+    { key: 'grape', label: 'Rebsorte', kind: 'multi-select', field: 'grape' },
+    { key: 'origin', label: 'Region', kind: 'multi-select', field: 'origin' },
+    { key: 'country', label: 'Land', kind: 'dropdown', field: 'country' },
+    { key: 'type', label: 'Typ', kind: 'dropdown', field: 'type' },
+    { key: 'producer', label: 'Weingut', kind: 'dropdown', field: 'producer' },
+    { key: 'quality', label: 'Qualität', kind: 'dropdown', field: 'quality' },
+    { key: 'ratingFrom', label: 'Bewertung ab', kind: 'rating-bound', bound: 'from' },
+    { key: 'ratingTo', label: 'Bewertung bis', kind: 'rating-bound', bound: 'to' },
+    { key: 'tastingDateFrom', label: 'Verkostung ab', kind: 'date-bound', bound: 'from' },
+    { key: 'tastingDateTo', label: 'Verkostung bis', kind: 'date-bound', bound: 'to' },
+    { key: 'yearFrom', label: 'Jahrgang ab', kind: 'year-bound', bound: 'from' },
+    { key: 'yearTo', label: 'Jahrgang bis', kind: 'year-bound', bound: 'to' },
+  ];
 
-  // Standard-Filter (fest, immer sichtbar), in Schema-Reihenfolge
-  readonly standardFields = computed(() =>
-    this.filterableFields().filter((f) => this.STANDARD_FIELDS.includes(f.field)),
-  );
-
-  // in ControlsRow gerenderte Zusatzfelder: eingeblendet, in Schema-Reihenfolge
-  readonly extraFields = computed(() => {
-    const extra = new Set(this.fs.visibleFilterFields());
-    return this.filterableFields().filter(
-      (f) => !this.STANDARD_FIELDS.includes(f.field) && extra.has(f.field),
-    );
+  // Nur Deskriptoren, deren Schemafeld tatsächlich existiert bzw. die schemafrei sind.
+  readonly availableDescriptors = computed(() => {
+    const known = new Set(this.data.schema().map((s) => s.field));
+    return this.OPTIONAL_DESCRIPTORS.filter((d) => !d.field || known.has(d.field));
   });
 
-  // über „Mehr Filter" zuschaltbare Kandidaten (alle filterbaren Nicht-Standard-Felder)
-  readonly toggleableFields = computed(() =>
-    this.filterableFields().filter((f) => !this.STANDARD_FIELDS.includes(f.field)),
-  );
+  // Aktuell eingeblendete Zusatzfilter in Katalog-Reihenfolge.
+  readonly visibleDescriptors = computed(() => {
+    const on = new Set(this.fs.visibleFilterFields());
+    return this.availableDescriptors().filter((d) => on.has(d.key));
+  });
 
   readonly moreFiltersOpen = signal(false);
 
@@ -46,12 +63,17 @@ export class ControlsRowComponent {
     this.moreFiltersOpen.update((v) => !v);
   }
 
-  isFieldVisible(field: string): boolean {
-    return this.fs.visibleFilterFields().includes(field);
+  isFieldVisible(key: string): boolean {
+    return this.fs.visibleFilterFields().includes(key);
   }
 
-  toggleMoreFilter(field: string, on: boolean): void {
-    this.fs.toggleFilterField(field, on);
+  toggleMoreFilter(key: string, on: boolean): void {
+    this.fs.toggleFilterField(key, on);
+  }
+
+  /** Entfernen über das Icon am Filter: blendet aus und setzt den Wert zurück. */
+  removeFilter(key: string): void {
+    this.fs.toggleFilterField(key, false);
   }
 
   toggleInfo(): void {
@@ -62,7 +84,7 @@ export class ControlsRowComponent {
     this.fs.setViewMode(this.fs.viewMode() === 'grid' ? 'list' : 'grid');
   }
 
-  trackField(_: number, f: WineSchemaField): string {
-    return f.field;
+  trackDescriptor(_: number, d: FilterDescriptor): string {
+    return d.key;
   }
 }

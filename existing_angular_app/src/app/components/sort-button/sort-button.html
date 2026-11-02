@@ -1,0 +1,8 @@
+<button class="sort-button" [class.active]="active" aria-label="Sort by {{ label }} / {{ direction }}">
+  {{ label }}
+  @if (active && direction === 'asc') {
+    ↓
+  } @else if (active && direction === 'desc') {
+    ↑
+  }
+</button>

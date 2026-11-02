@@ -7,18 +7,25 @@
   inset: auto 0 0 0;
   margin: 0.5rem;
   padding: 0.75rem 0.85rem;
+  /* Platz oben für den herausragenden Rating-Kreis, damit er nicht
+     vom Textinhalt überdeckt wird. */
+  padding-top: 1.6rem;
   border: 3px solid var(--text-dark);
   border-radius: var(--radius-input);
   background: var(--background-info-tile);
   color: var(--text-dark);
   max-height: calc(100% - 1rem);
-  overflow: auto;
+  /* overflow sichtbar lassen, damit der oben überstehende Rating-Kreis
+     nicht abgeschnitten wird; langer Textinhalt wird separat begrenzt. */
+  overflow: visible;
 }
 
 .overlay-rating {
   position: absolute;
-  top: -1.1rem;
+  top: -1.25rem;
   right: 0.5rem;
+  /* über dem Overlay-Rahmen, immer vollständig sichtbar */
+  z-index: 3;
 }
 
 .wine-name {

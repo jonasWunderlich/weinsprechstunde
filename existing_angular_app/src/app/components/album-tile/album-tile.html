@@ -1,0 +1,31 @@
+<span
+  (click)="toggleDetails()"
+  (mouseenter)="onMouseEnter()"
+  (mouseleave)="onMouseLeave()"
+  tabindex="0"
+  role="button"
+  [attr.aria-expanded]="showDetails()"
+  (keydown.enter)="toggleDetails()"
+  (keydown.space)="toggleDetails()"
+>
+  <app-album-tile-cover [album]="album" [lazy]="lazy" />
+
+  <div class="meta-data" [class.visible]="showInfos || showDetails()">
+    <div class="top-left-icons">
+      @if (album.urlVideo) {
+        <a [href]="album.urlVideo" target="_blank" class="video-icon" title="Watch Video"></a>
+      }
+      @if (album.urlWikipedia) {
+        <a [href]="album.urlWikipedia" target="_blank" class="wikipedia-icon" title="Wikipedia Article"></a>
+      }
+    </div>
+    <div class="top-right-icons">
+      @if (album.rating) {
+        <div class="rating-circle" [attr.title]="getRating(album.rating)">
+          {{ album.rating }}
+        </div>
+      }
+    </div>
+    <app-album-tile-overlay [album]="album" />
+  </div>
+</span>

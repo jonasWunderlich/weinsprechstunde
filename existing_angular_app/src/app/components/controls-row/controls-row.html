@@ -1,0 +1,102 @@
+<app-sort-button
+  [active]="filters().sortBy === SortOptions.rating"
+  [direction]="filters().sortDir"
+  label="Rating"
+  (click)="setSort(SortOptions.rating)"
+/>
+
+@if (!filters().releaseYear) {
+  <app-sort-button
+    [active]="filters().sortBy === SortOptions.releaseYear"
+    [direction]="filters().sortDir"
+    label="Jahr"
+    (click)="setSort(SortOptions.releaseYear)"
+  />
+}
+
+<app-sort-button
+  [active]="filters().sortBy === SortOptions.addedDate"
+  [direction]="filters().sortDir"
+  label="Added"
+  (click)="setSort(SortOptions.addedDate)"
+/>
+<app-sort-button
+  [active]="filters().sortBy === SortOptions.lastPlayedDate"
+  [direction]="filters().sortDir"
+  label="Played"
+  (click)="setSort(SortOptions.lastPlayedDate)"
+/>
+
+<button
+  type="button"
+  class="filter-button"
+  aria-label="Filter albums with archival material"
+  [class.active]="filters().reissue === true"
+  [class.negative]="filters().reissue === false"
+  [attr.aria-pressed]="filters().reissue"
+  (click)="toggleFilter('reissue')"
+>
+  Archival
+</button>
+<button
+  type="button"
+  class="filter-button"
+  aria-label="Filter albums listed in wire rewind"
+  [class.active]="filters().tino"
+  [attr.aria-pressed]="filters().tino"
+  (click)="toggleFilter('tino')"
+>
+  Tino
+</button>
+<button
+  type="button"
+  class="filter-button"
+  aria-label="Filter albums liked by tino"
+  [class.active]="filters().wire"
+  [attr.aria-pressed]="filters().wire"
+  (click)="toggleFilter('wire')"
+>
+  Wire
+</button>
+<button
+  type="button"
+  class="filter-button"
+  [class.active]="!showInfos"
+  aria-label="Show album meta data for all albums"
+  [attr.aria-pressed]="!showInfos"
+  (click)="showInfosChange.emit(!showInfos)"
+>
+  𝒊
+</button>
+
+<button
+  type="button"
+  class="filter-button show-list"
+  [class.active]="showList"
+  aria-label="Show album meta data for all albums"
+  [attr.aria-pressed]="!showList"
+  (click)="showListChange.emit(!showInfos)"
+>
+  ☰
+</button>
+
+<div class="search-container">
+  <input
+    type="text"
+    id="myInput"
+    [value]="filters().search"
+    (input)="updateSearch($event)"
+    placeholder="Search &amp; Filter Records .."
+  />
+
+  @if (filters().search) {
+    <div class="input-actions">
+      @if (hasFilters()) {
+        <button type="button" class="full-search link-btn" (click)="expandSearch()" aria-label="Ohne Filter suchen">
+          Ohne Filter suchen
+        </button>
+      }
+      <button type="button" class="reset-btn" (click)="clearSearch()" aria-label="Suchfeld zurücksetzen">✖</button>
+    </div>
+  }
+</div>

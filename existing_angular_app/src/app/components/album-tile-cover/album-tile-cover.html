@@ -1,0 +1,34 @@
+@if (hasValidCover()) {
+  <img
+    class="album-poster"
+    [src]="album.urlCover"
+    [alt]="album.title"
+    [attr.loading]="lazy ? 'lazy' : 'eager'"
+    [attr.decoding]="lazy ? 'async' : 'sync'"
+    (error)="onImageError()"
+  />
+} @else {
+  <a
+    [href]="googleImageSearchUrl(album)"
+    target="_blank"
+    rel="noopener noreferrer"
+    class="cover-placeholder"
+    title="Kein Cover vorhanden – Google Bildersuche öffnen"
+  >
+    <span class="placeholder-text">Cover suchen</span>
+  </a>
+}
+
+@if (album.owned) {
+  <div class="vinyl-overlay" title="Owned (Vinyl)"></div>
+}
+
+<a
+  class="corner-button"
+  [href]="googleImageSearchUrl(album)"
+  target="_blank"
+  rel="noopener noreferrer"
+  title="Kein Cover vorhanden – Google Bildersuche öffnen"
+>
+  ↻
+</a>

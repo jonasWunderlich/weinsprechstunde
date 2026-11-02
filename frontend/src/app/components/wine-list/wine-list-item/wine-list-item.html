@@ -1,4 +1,5 @@
 <button class="list-item" type="button" (click)="open()">
+  <app-wine-tile-cover class="li-cover" [wine]="wine()" />
   <span class="li-name" data-field="name">{{ wine().name }}</span>
   @if (isPresent(wine().producer)) {
     <span class="li-producer" data-field="producer">{{ wine().producer }}</span>

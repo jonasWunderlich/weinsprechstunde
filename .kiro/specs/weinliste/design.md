@@ -5,7 +5,7 @@
 „Weinsprechstunde" besteht aus drei voneinander unabhängigen Subsystemen:
 
 1. **Python Import-Skript** (`scripts/weinimport.py`) — ein phasenbasiertes CLI, das JSON-Quelldateien aus dem Import-Ordner aufbereitet, eine fertige `wines.json` exportiert, Bilder skaliert und Artefakte optional auf einen Webserver deployt. Vor der Pipeline kann ein Zwei-Tier-Backup erstellt und bei Bedarf der Import-Ordner per FTP/SFTP vom Webserver heruntergeladen werden.
-2. **Angular SPA Frontend** (`frontend/`) — liest die fertig generierte `wines.json` sowie die zentrale `wine-schema.json` und stellt Weine in Kachel- oder Listenansicht mit dynamischer, schema-gesteuerter Filterkonfiguration und URL-basiertem Routing dar.
+2. **Angular SPA Frontend** (`frontend/`) — liest die fertig generierte `wines.json` sowie die zentrale `wine-schema.json` und stellt Weine in Kachel- oder Listenansicht mit dynamischer, schema-gesteuerter Filterkonfiguration dar. Die App hat nur eine Route (`/`); sämtliche Filter liegen im FilterService.
 3. **Wine Editor Web-App** (`editor/`) — eine passwortgeschützte FastAPI-Anwendung mit Vanilla-HTML/JS-Frontend zur komfortablen Pflege der JSON-Quelldateien im Import-Ordner. Nutzt ebenfalls `wine-schema.json` für dynamische Formularfelder.
 
 Die drei Subsysteme teilen sich zwei zentrale Konfigurationsdateien im Projekt-Root:
@@ -64,12 +64,12 @@ weinsprechstunde2/
 ┌──────────────────────────────────────────────────────────────────────┐
 │  Browser: Angular SPA                                                │
 │                                                                      │
-│  AppComponent (Router Outlet)                                        │
-│  ├── NavComponent (Regionen/Rebsorten Dropdowns)                    │
-│  └── WineWallComponent (Route: /, /region/:slug, /rebsorte/:slug)   │
+│  AppComponent (Router Outlet, globale Tastaturkürzel i/l)           │
+│  ├── NavComponent (Logo-Platzhalter + App-Name, Logo-Klick = Reset) │
+│  └── WineWallComponent (Route: /)                                   │
 │      ├── ControlsRowComponent (Filter via WineSchema, Toggles)      │
-│      ├── WineGridComponent  (Kacheln + EndlessScroll)               │
-│      └── WineListComponent  (Liste  + EndlessScroll)                │
+│      ├── WineGridComponent  (Kacheln, alle gefilterten Weine)       │
+│      └── WineListComponent  (Liste,  alle gefilterten Weine)        │
 │  WineDetailDialogComponent (modal, global in AppComponent)          │
 │                                                                      │
 │  Services: WineDataService · FilterService · UserPreferencesService  │
@@ -142,23 +142,28 @@ graph TD
 
 Definiert alle bekannten Weinattribute mit Datentyp, Filter-Typ und ob sie standardmäßig als Filter angezeigt werden. Wird von Python-Skript, Angular-Frontend und Wine-Editor gemeinsam genutzt.
 
+Hinweis: `default_filter` steuert nicht mehr die initiale Filtersichtbarkeit — fest
+sichtbar ist nur die Freitextsuche, alle übrigen Filter sind optional über „Mehr Filter"
+zuschaltbar. Das Flag bleibt im Schema erhalten (unverändert), wird aber vom Frontend für
+die initiale Anzeige nicht mehr ausgewertet.
+
 ```json
 [
   { "field": "name",         "type": "text",        "filter_type": "text-search",  "default_filter": true  },
-  { "field": "year",         "type": "number",       "filter_type": "range",        "default_filter": false },
-  { "field": "country",      "type": "text",         "filter_type": "dropdown",     "default_filter": false },
-  { "field": "origin",       "type": "text",         "filter_type": "dropdown",     "default_filter": false },
-  { "field": "grape",        "type": "multi-value",  "filter_type": "multi-select", "default_filter": true  },
-  { "field": "type",         "type": "text",         "filter_type": "dropdown",     "default_filter": false },
-  { "field": "producer",     "type": "text",         "filter_type": "dropdown",     "default_filter": false },
-  { "field": "quality",      "type": "text",         "filter_type": "dropdown",     "default_filter": false },
-  { "field": "price",        "type": "text",         "filter_type": null,           "default_filter": false },
-  { "field": "rating",       "type": "rating",       "filter_type": "rating-range", "default_filter": true  },
-  { "field": "tasting_date", "type": "date",         "filter_type": "date-range",   "default_filter": true  },
-  { "field": "image",        "type": "text",         "filter_type": null,           "default_filter": false },
-  { "field": "audio",        "type": "text",         "filter_type": null,           "default_filter": false },
-  { "field": "video",        "type": "text",         "filter_type": null,           "default_filter": false },
-  { "field": "description",  "type": "text",         "filter_type": null,           "default_filter": false }
+  { "field": "year",         "type": "number",      "filter_type": "range",        "default_filter": false, "decimals": 0 },
+  { "field": "country",      "type": "text",        "filter_type": "dropdown",     "default_filter": false },
+  { "field": "origin",       "type": "text",        "filter_type": "dropdown",     "default_filter": false },
+  { "field": "grape",        "type": "multi-value", "filter_type": "multi-select", "default_filter": true  },
+  { "field": "type",         "type": "text",        "filter_type": "dropdown",     "default_filter": false },
+  { "field": "producer",     "type": "text",        "filter_type": "dropdown",     "default_filter": false },
+  { "field": "quality",      "type": "text",        "filter_type": "dropdown",     "default_filter": false },
+  { "field": "price",        "type": "number",      "filter_type": null,           "default_filter": false, "decimals": 2 },
+  { "field": "rating",       "type": "number",      "filter_type": "rating-range", "default_filter": true,  "decimals": 1 },
+  { "field": "tasting_date", "type": "date",        "filter_type": "date-range",   "default_filter": true  },
+  { "field": "image",        "type": "text",        "filter_type": null,           "default_filter": false },
+  { "field": "audio",        "type": "text",        "filter_type": null,           "default_filter": false },
+  { "field": "video",        "type": "text",        "filter_type": null,           "default_filter": false },
+  { "field": "description",  "type": "text",        "filter_type": null,           "default_filter": false }
 ]
 ```
 
@@ -641,41 +646,38 @@ jobs:
 
 #### Router-Konfiguration
 
-Alle drei Routen rendern dieselbe `WineWallComponent`. Kein Datennachladen bei Routenwechseln — `WineWallComponent` liest Route-Parameter und aktualisiert den `FilterService`.
+Die App hat genau eine Inhaltsroute (`/`), die die `WineWallComponent` rendert, plus einen Wildcard-Redirect. Es gibt keine filterspezifischen Routen (`/region/:slug`, `/rebsorte/:slug` entfallen); der gesamte Filterzustand liegt im `FilterService`.
 
 ```typescript
 // app.routes.ts
 export const routes: Routes = [
-  { path: '',               component: WineWallComponent },
-  { path: 'region/:slug',   component: WineWallComponent },
-  { path: 'rebsorte/:slug', component: WineWallComponent },
-  { path: '**',             redirectTo: '' }
+  { path: '',   component: WineWallComponent },
+  { path: '**', redirectTo: '' }
 ];
 ```
 
 #### Komponentenstruktur
 
 ```
-AppComponent
-├── NavComponent
-│   ├── Dropdown "Regionen" (aus FilterService.availableRegions)
-│   └── Dropdown "Rebsorten" (aus FilterService.availableGrapes)
-└── WineWallComponent (liest Route-Parameter, initialisiert FilterService)
+AppComponent (globale Tastaturkürzel i/l via host-keydown)
+├── NavComponent (Logo-Platzhalter + App-Name; Klick = clearAllFilters + navigate '/')
+└── WineWallComponent (liest keine Route-Parameter; Container der Hauptansicht)
     ├── ControlsRowComponent
-    │   ├── FilterFieldComponent (×n, dynamisch aus WineSchema)
-    │   ├── MoreFiltersButtonComponent
-    │   ├── SortControlComponent
-    │   ├── InfoToggleComponent
-    │   └── ListToggleComponent
-    ├── WineGridComponent
-    │   ├── BackButtonTileComponent (nur wenn hasActiveFilter())
-    │   └── WineTileComponent (×n, EndlessScroll)
+    │   ├── FilterFieldComponent (fest: Freitextsuche "Filter")
+    │   ├── FilterFieldComponent (×n optional, aus visibleFilterFields; mit Entfernen-Icon)
+    │   ├── "Mehr Filter"-Menü (Checkbox-Liste optionaler Filter)
+    │   ├── SortButtonComponent (natives <select>, 5 Optionen)
+    │   ├── InfoToggle (Button, title "Tastenkürzel: i")
+    │   └── ListToggle (Button, title "Tastenkürzel: l")
+    ├── WineGridComponent (rendert ALLE gefilterten Weine, keine Paginierung)
+    │   ├── Zurück-Button (back-tile, nur wenn hasActiveFilter())
+    │   └── WineTileComponent (×n)
     │       ├── WineTileCoverComponent
     │       ├── WineTileOverlayComponent (festes Template)
     │       └── PlayButtonComponent (wenn audio/video vorhanden)
-    └── WineListComponent
-        ├── BackButtonItemComponent (nur wenn hasActiveFilter())
-        └── WineListItemComponent (×n, EndlessScroll)
+    └── WineListComponent (rendert ALLE gefilterten Weine, keine Paginierung)
+        ├── Zurück-Button (back-item, nur wenn hasActiveFilter())
+        └── WineListItemComponent (×n; WineTileCover-Thumbnail + Name/Weingut/Jahr/Land/Rating)
 WineDetailDialogComponent (modal, festes Template in Gruppen)
 ```
 
@@ -716,8 +718,7 @@ export class FilterService {
   private readonly prefs    = inject(UserPreferencesService);
 
   // Zustand
-  readonly filter              = signal<WineFilter>(EMPTY_FILTER);
-  readonly navigationFilter    = signal<NavigationFilter | null>(null);
+  readonly filter              = signal<WineFilter>({ ...EMPTY_FILTER });
   readonly sortOption          = signal<SortOption>('tasting_date_desc');
   readonly viewMode            = signal<'grid' | 'list'>('grid');
   readonly infoToggleActive    = signal<boolean>(false);
@@ -730,58 +731,38 @@ export class FilterService {
     this.visibleFilterFields.set(saved.visibleFilters);
   }
 
+  // text-search-Felder schema-abgeleitet (aktuell nur 'name')
+  readonly searchFields = computed(() =>
+    this.wineData.schema()
+      .filter(f => f.filter_type === 'text-search')
+      .map(f => f.field)
+  );
+
   // Berechnete Werte
   readonly filteredWines = computed(() =>
     applyFiltersAndSort(
       this.wineData.wines(),
       this.filter(),
-      this.navigationFilter(),
-      this.sortOption()
+      this.sortOption(),
+      this.searchFields()
     )
   );
 
-  readonly availableRegions = computed(() => {
-    const counts = new Map<string, number>();
-    for (const w of this.wineData.wines()) {
-      if (w.origin) counts.set(w.origin, (counts.get(w.origin) ?? 0) + 1);
-    }
-    return [...counts.entries()]
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([value, count]) => ({ value, count }));
+  readonly hasActiveFilter = computed(() => {
+    const f = this.filter();
+    return (
+      f.searchText.trim() !== '' ||
+      Object.values(f.dropdowns).some(v => v !== null) ||
+      Object.values(f.multiSelects).some(v => v.length > 0) ||
+      f.yearFrom !== null || f.yearTo !== null ||
+      f.ratingFrom !== null || f.ratingTo !== null ||
+      f.tastingDateFrom !== null || f.tastingDateTo !== null
+    );
   });
 
-  readonly availableGrapes = computed(() => {
-    const counts = new Map<string, number>();
-    for (const w of this.wineData.wines()) {
-      const grapes = Array.isArray(w.grape) ? w.grape : (w.grape ? [w.grape] : []);
-      for (const g of grapes) counts.set(g, (counts.get(g) ?? 0) + 1);
-    }
-    return [...counts.entries()]
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([value, count]) => ({ value, count }));
-  });
-
-  readonly availableCountries = computed(() =>
-    [...new Set(this.wineData.wines().map(w => w.country).filter(Boolean))] as string[]
-  );
-
-  readonly hasActiveFilter = computed(() =>
-    this.navigationFilter() !== null ||
-    this.filter().searchText !== '' ||
-    Object.values(this.filter()).some(v => v !== null && v !== '')
-  );
-
-  setNavigationFilter(type: 'region' | 'rebsorte', slug: string): void {
-    this.navigationFilter.set({ type, slug });
-  }
-
-  clearNavigationFilter(): void {
-    this.navigationFilter.set(null);
-  }
-
+  /** Setzt NUR die Filterwerte zurück; Sichtbarkeit/Sort/View bleiben. */
   clearAllFilters(): void {
-    this.filter.set(EMPTY_FILTER);
-    this.navigationFilter.set(null);
+    this.filter.set({ ...EMPTY_FILTER });
   }
 
   setSortOption(opt: SortOption): void {
@@ -795,12 +776,42 @@ export class FilterService {
   }
 
   toggleFilterField(field: string, visible: boolean): void {
-    const current = this.visibleFilterFields();
-    const updated = visible
-      ? [...current, field]
-      : current.filter(f => f !== field);
-    this.visibleFilterFields.set(updated);
+    this.visibleFilterFields.update(fields => {
+      const set = new Set(fields);
+      if (visible) set.add(field);
+      else set.delete(field);
+      return [...set];
+    });
+    // Beim Ausblenden den zugehörigen Filterwert zurücksetzen, damit ein
+    // entfernter Filter nicht unsichtbar weiterwirkt (Icon ODER "Mehr Filter").
+    if (!visible) this.resetFilterKey(field);
     this._savePrefs();
+  }
+
+  /** Setzt den Filterwert eines einzelnen optionalen Filter-Keys zurück. */
+  resetFilterKey(key: string): void {
+    this.filter.update(f => {
+      switch (key) {
+        case 'grape':
+        case 'origin':
+          return { ...f, multiSelects: { ...f.multiSelects, [key]: [] } };
+        case 'country':
+        case 'type':
+        case 'producer':
+        case 'quality':
+          return { ...f, dropdowns: { ...f.dropdowns, [key]: null } };
+        case 'yearFrom': case 'yearTo':
+        case 'ratingFrom': case 'ratingTo':
+        case 'tastingDateFrom': case 'tastingDateTo':
+          return { ...f, [key]: null };
+        default:
+          return f;
+      }
+    });
+  }
+
+  updateFilter(patch: Partial<WineFilter>): void {
+    this.filter.update(f => ({ ...f, ...patch }));
   }
 
   private _savePrefs(): void {
@@ -812,61 +823,53 @@ export class FilterService {
   }
 }
 
-/** Pure Funktion — einfach unit-testbar */
+/**
+ * Pure Funktion — einfach unit-testbar. Einzige Eigentümerin der AND-Invariante.
+ * `searchFields` sind die schema-definierten text-search-Felder (aktuell nur 'name').
+ * `valueList(wine, field)` liefert die Stringwerte eines (ggf. Array-)Feldes.
+ */
 export function applyFiltersAndSort(
   wines: Wine[],
   filter: WineFilter,
-  navFilter: NavigationFilter | null,
-  sort: SortOption
+  sort: SortOption,
+  searchFields: string[]
 ): Wine[] {
   const filtered = wines.filter(wine => {
-    // Navigation-Filter (region oder rebsorte per Slug)
-    if (navFilter) {
-      const slug = (s: string) => s.toLowerCase().replace(/\s+/g, '-');
-      if (navFilter.type === 'region') {
-        if (!wine.origin || slug(wine.origin) !== navFilter.slug) return false;
-      } else {
-        const grapes = Array.isArray(wine.grape) ? wine.grape : (wine.grape ? [wine.grape] : []);
-        if (!grapes.some(g => slug(g) === navFilter.slug)) return false;
+    // 1. Freitextsuche: case-insensitiv, NUR über schema-definierte text-search-Felder
+    if (filter.searchText.trim()) {
+      const q = filter.searchText.toLowerCase().trim();
+      const haystacks = searchFields.flatMap(f => valueList(wine, f));
+      if (!haystacks.some(h => h.toLowerCase().includes(q))) return false;
+    }
+    // 2. Einzelauswahl-Dropdowns (country, type, producer, quality)
+    for (const [field, sel] of Object.entries(filter.dropdowns)) {
+      if (sel != null && !valueList(wine, field).includes(sel)) return false;
+    }
+    // 3. Multiselect-Dropdowns (grape, origin): OR innerhalb, AND zwischen Feldern
+    for (const [field, selected] of Object.entries(filter.multiSelects)) {
+      if (selected.length > 0) {
+        const values = valueList(wine, field);
+        if (!selected.some(s => values.includes(s))) return false;
       }
     }
-    // Freitextsuche (case-insensitiv, text-search-Felder laut WineSchema)
-    if (filter.searchText) {
-      const q = filter.searchText.toLowerCase();
-      const grapeStr = Array.isArray(wine.grape) ? wine.grape.join(' ') : (wine.grape ?? '');
-      const matches =
-        wine.name.toLowerCase().includes(q) ||
-        String(wine.year ?? '').includes(q) ||
-        grapeStr.toLowerCase().includes(q) ||
-        (wine.producer ?? '').toLowerCase().includes(q) ||
-        (wine.origin ?? '').toLowerCase().includes(q);
-      if (!matches) return false;
-    }
-    // Dropdown-Filter
-    if (filter.country && wine.country !== filter.country) return false;
-    if (filter.grape) {
-      const grapes = Array.isArray(wine.grape) ? wine.grape : [wine.grape ?? ''];
-      if (!grapes.includes(filter.grape)) return false;
-    }
-    // Range-Filter
-    if (filter.yearFrom    != null && (wine.year   == null || wine.year   < filter.yearFrom))   return false;
-    if (filter.yearTo      != null && (wine.year   == null || wine.year   > filter.yearTo))     return false;
-    if (filter.ratingFrom  != null && (wine.rating == null || wine.rating < filter.ratingFrom)) return false;
-    if (filter.ratingTo    != null && (wine.rating == null || wine.rating > filter.ratingTo))   return false;
-    if (filter.tastingDateFrom && (wine.tasting_date ?? '') < filter.tastingDateFrom) return false;
-    if (filter.tastingDateTo   && (wine.tasting_date ?? '') > filter.tastingDateTo)   return false;
+    // 4. Range-Grenzen (jede Grenze ein eigener optionaler Filter; null = inaktiv)
+    if (filter.yearFrom   != null && (wine.year   == null || wine.year   < filter.yearFrom))   return false;
+    if (filter.yearTo     != null && (wine.year   == null || wine.year   > filter.yearTo))     return false;
+    if (filter.ratingFrom != null && (wine.rating == null || wine.rating < filter.ratingFrom)) return false;
+    if (filter.ratingTo   != null && (wine.rating == null || wine.rating > filter.ratingTo))   return false;
+    if (filter.tastingDateFrom != null && (wine.tasting_date == null || wine.tasting_date < filter.tastingDateFrom)) return false;
+    if (filter.tastingDateTo   != null && (wine.tasting_date == null || wine.tasting_date > filter.tastingDateTo))   return false;
     return true;
   });
 
   return filtered.slice().sort((a, b) => {
-    if (sort === 'tasting_date_asc') {
-      return (a.tasting_date ?? '').localeCompare(b.tasting_date ?? '');
+    switch (sort) {
+      case 'tasting_date_asc': return (a.tasting_date ?? '').localeCompare(b.tasting_date ?? '');
+      case 'rating_desc':      return (b.rating ?? 0) - (a.rating ?? 0);
+      case 'price_desc':       return (b.price ?? -Infinity) - (a.price ?? -Infinity);
+      case 'price_asc':        return (a.price ?? Infinity) - (b.price ?? Infinity);
+      default:                 return (b.tasting_date ?? '').localeCompare(a.tasting_date ?? ''); // tasting_date_desc
     }
-    if (sort === 'rating_desc') {
-      return (b.rating ?? 0) - (a.rating ?? 0);
-    }
-    // tasting_date_desc (Standard)
-    return (b.tasting_date ?? '').localeCompare(a.tasting_date ?? '');
   });
 }
 ```
@@ -911,54 +914,77 @@ export class UserPreferencesService {
 }
 ```
 
-#### WineWallComponent — Route-Integration
+#### WineWallComponent — Container der Hauptansicht
+
+Reiner Container. Lädt keine Daten, liest keine Route-Parameter; der Filterzustand liegt vollständig im `FilterService`. Wählt je nach `viewMode()` zwischen WineGrid und WineList.
 
 ```typescript
 @Component({ /* … */ })
-export class WineWallComponent implements OnInit {
-  private readonly route         = inject(ActivatedRoute);
-  private readonly filterService = inject(FilterService);
-
-  ngOnInit(): void {
-    this.route.params.subscribe(params => {
-      if (params['slug']) {
-        const path = this.route.snapshot.routeConfig?.path ?? '';
-        if (path.startsWith('region')) {
-          this.filterService.setNavigationFilter('region', params['slug']);
-        } else if (path.startsWith('rebsorte')) {
-          this.filterService.setNavigationFilter('rebsorte', params['slug']);
-        }
-      } else {
-        this.filterService.clearNavigationFilter();
-      }
-    });
-  }
+export class WineWallComponent {
+  readonly filterService = inject(FilterService);
 }
 ```
 
-#### WineGridComponent — EndlessScroll + Zurück-Button
+#### ControlsRowComponent — Filterkatalog
+
+Fest sichtbar ist nur die Freitextsuche (Label „Filter"). Alle übrigen Filter sind optional und werden einzeln über das „Mehr Filter"-Menü zugeschaltet. Range-Grenzen sind bewusst als eigene Bound-Filter aufgeführt.
+
+```typescript
+readonly searchDescriptor: FilterDescriptor = { key: 'search', label: 'Filter', kind: 'text-search' };
+
+readonly OPTIONAL_DESCRIPTORS: FilterDescriptor[] = [
+  { key: 'grape',           label: 'Rebsorte',      kind: 'multi-select', field: 'grape' },
+  { key: 'origin',          label: 'Region',        kind: 'multi-select', field: 'origin' },
+  { key: 'country',         label: 'Land',          kind: 'dropdown',     field: 'country' },
+  { key: 'type',            label: 'Typ',           kind: 'dropdown',     field: 'type' },
+  { key: 'producer',        label: 'Weingut',       kind: 'dropdown',     field: 'producer' },
+  { key: 'quality',         label: 'Qualität',      kind: 'dropdown',     field: 'quality' },
+  { key: 'ratingFrom',      label: 'Bewertung ab',  kind: 'rating-bound', bound: 'from' },
+  { key: 'ratingTo',        label: 'Bewertung bis', kind: 'rating-bound', bound: 'to' },
+  { key: 'tastingDateFrom', label: 'Verkostung ab', kind: 'date-bound',   bound: 'from' },
+  { key: 'tastingDateTo',   label: 'Verkostung bis',kind: 'date-bound',   bound: 'to' },
+  { key: 'yearFrom',        label: 'Jahrgang ab',   kind: 'year-bound',   bound: 'from' },
+  { key: 'yearTo',          label: 'Jahrgang bis',  kind: 'year-bound',   bound: 'to' },
+];
+
+// Entfernen über das Icon am Filter → blendet aus UND setzt den Wert zurück.
+removeFilter(key: string): void { this.fs.toggleFilterField(key, false); }
+```
+
+Das `FilterFieldComponent` ist deskriptorgesteuert (`kind` bestimmt die Darstellung):
+`text-search` → Suchfeld; `dropdown` → natives `<select>` mit Einzelauswahl;
+`multi-select` → kompaktes aufklappbares Dropdown (Trigger-Button mit Zusammenfassung
+„Alle"/Wert/„n gewählt" + Checkbox-Panel mit „Zurücksetzen"/„Fertig");
+`rating-bound`/`year-bound` → eine Zahleneingabe; `date-bound` → eine Datumseingabe.
+Optionale Filter tragen ein Entfernen-Icon (✕) neben dem Label.
+
+#### SortButtonComponent
+
+Natives `<select>` mit fünf Optionen, das nur den `FilterService` liest/schreibt:
+„Neueste Verkostung zuerst" (`tasting_date_desc`, Standard), „Älteste Verkostung zuerst"
+(`tasting_date_asc`), „Beste Bewertung zuerst" (`rating_desc`), „Teuerste zuerst"
+(`price_desc`), „Günstigste zuerst" (`price_asc`).
+
+#### WineGridComponent — alle gefilterten Weine + Zurück-Button
+
+Alle Weindaten sind beim Start vollständig geladen; das Grid rendert **alle** gefilterten
+Weine direkt — keine Paginierung, kein IntersectionObserver, kein Nachladen. Der
+Zurück-Button (`back-tile`, gleiche Größe wie eine Kachel) erscheint, wenn ein
+ControlsRow-Filter aktiv ist (`hasActiveFilter`). WineList arbeitet analog (Zurück-Button als `back-item`-Zeile).
 
 ```typescript
 @Component({ /* … */ })
 export class WineGridComponent {
-  private readonly filterService = inject(FilterService);
-  readonly PAGE_SIZE = 24;
-  readonly visibleCount = signal(this.PAGE_SIZE);
+  readonly fs = inject(FilterService);
 
-  readonly allWines      = this.filterService.filteredWines;
-  readonly visibleWines  = computed(() => this.allWines().slice(0, this.visibleCount()));
-  readonly showBackButton = this.filterService.hasActiveFilter;
+  readonly visibleWines   = this.fs.filteredWines;   // keine Slice/Paginierung
+  readonly showBackButton = this.fs.hasActiveFilter;
+  readonly isEmpty        = computed(() => this.visibleWines().length === 0);
 
-  // IntersectionObserver auf Sentinel-div am Ende
-  onSentinelVisible(): void {
-    this.visibleCount.update(n => Math.min(n + this.PAGE_SIZE, this.allWines().length));
+  goBack(): void {
+    this.fs.clearAllFilters();
+    this.router.navigate(['/']);
   }
-
-  // Bei Filteränderung: zurück auf Seite 1
-  private readonly _resetOnFilter = effect(() => {
-    this.allWines();
-    this.visibleCount.set(this.PAGE_SIZE);
-  });
 }
 ```
 
@@ -999,26 +1025,19 @@ export class WineTileComponent {
 
 #### NavComponent
 
+Nur Logo-Platzhalter + App-Name „Weinsprechstunde". Keine Navigationsmenüpunkte
+(keine Regionen/Rebsorten-Dropdowns). Ein Klick auf das Logo bzw. den App-Namen setzt
+alle aktiven Filter zurück und navigiert zur Startroute `/`.
+
 ```typescript
 @Component({ /* … */ })
 export class NavComponent {
   private readonly router        = inject(Router);
   private readonly filterService = inject(FilterService);
 
-  readonly regionsOpen = signal(false);
-  readonly grapesOpen  = signal(false);
-
-  readonly regionsWithCount = this.filterService.availableRegions;
-  readonly grapesWithCount  = this.filterService.availableGrapes;
-
-  navigateToRegion(slug: string): void {
-    this.router.navigate(['/region', slug]);
-    this.regionsOpen.set(false);
-  }
-
-  navigateToGrape(slug: string): void {
-    this.router.navigate(['/rebsorte', slug]);
-    this.grapesOpen.set(false);
+  goHome(): void {
+    this.filterService.clearAllFilters();
+    this.router.navigate(['/']);
   }
 }
 ```
@@ -1080,12 +1099,51 @@ export class WineDetailDialogComponent {
 })
 export class AppComponent implements OnInit {
   readonly dataService   = inject(WineDataService);
+  readonly dialog        = inject(DialogService);
   readonly filterService = inject(FilterService);
-  readonly selectedWine  = signal<Wine | null>(null);
 
   ngOnInit(): void {
     this.dataService.loadAll();
   }
+}
+```
+
+#### Globale Tastaturkürzel (AppComponent host-keydown-Listener)
+
+Die AppComponent registriert einen globalen `(document:keydown)`-Listener:
+`i` schaltet `infoToggleActive` um (wie InfoToggle), `l` wechselt via `setViewMode`
+zwischen Grid und Liste (wie ListToggle). Die Shortcuts feuern nicht, wenn
+(a) der Fokus in einem Eingabefeld liegt (`INPUT`/`TEXTAREA`/`SELECT`/`contenteditable`),
+(b) der WineDetailDialog offen ist (`dialog.wine() !== null`), oder
+(c) eine Modifier-Taste (Ctrl/Meta/Alt) gedrückt ist. Die zugehörigen Buttons tragen
+einen `title`-Hinweis („Tastenkürzel: i" bzw. „Tastenkürzel: l").
+
+```typescript
+host: { '(document:keydown)': 'onKeydown($event)' }
+
+onKeydown(event: KeyboardEvent): void {
+  if (event.defaultPrevented) return;
+  if (event.ctrlKey || event.metaKey || event.altKey) return;
+  if (this.dialog.wine() !== null) return;
+  if (this.isEditableTarget(event.target)) return;
+
+  switch (event.key.toLowerCase()) {
+    case 'i':
+      this.filterService.infoToggleActive.update(v => !v);
+      event.preventDefault();
+      break;
+    case 'l':
+      this.filterService.setViewMode(this.filterService.viewMode() === 'grid' ? 'list' : 'grid');
+      event.preventDefault();
+      break;
+  }
+}
+
+private isEditableTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  if (!el) return false;
+  const tag = el.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable === true;
 }
 ```
 
@@ -1651,8 +1709,8 @@ export interface Wine {
   type?: string;
   producer?: string;
   quality?: string | string[];
-  price?: string;
-  rating?: number;
+  price?: number;               // Schema: type "number", decimals 2
+  rating?: number;              // Schema: type "number", decimals 1
   tasting_date?: string;        // ISO-8601
   image?: string;
   audio?: string;
@@ -1663,8 +1721,11 @@ export interface Wine {
 
 export interface WineFilter {
   searchText: string;
-  country: string | null;
-  grape: string | null;
+  // Einzelauswahl-Dropdowns (country, type, producer, quality): Wert = exakter Match oder null.
+  dropdowns: Record<string, string | null>;
+  // Multiselect-Dropdowns (grape, origin): leeres Array = inaktiv. OR innerhalb, AND zwischen Feldern.
+  multiSelects: Record<string, string[]>;
+  // Range-Grenzen — jede Grenze ist ein eigener, einzeln zuschaltbarer Filter.
   yearFrom: number | null;
   yearTo: number | null;
   ratingFrom: number | null;
@@ -1673,6 +1734,9 @@ export interface WineFilter {
   tastingDateTo: string | null;
 }
 
+// Legacy-Typ: im Modell noch vorhanden, aber nicht mehr verwendet (kein navigationFilter-
+// Signal, keine /region- bzw. /rebsorte-Routen mehr). Filtern nach Region/Rebsorte läuft
+// ausschließlich über multiSelects in der ControlsRow.
 export interface NavigationFilter {
   type: 'region' | 'rebsorte';
   slug: string;
@@ -1680,13 +1744,19 @@ export interface NavigationFilter {
 
 export const EMPTY_FILTER: WineFilter = {
   searchText: '',
-  country: null, grape: null,
+  dropdowns: { country: null, type: null, producer: null, quality: null },
+  multiSelects: { grape: [], origin: [] },
   yearFrom: null, yearTo: null,
   ratingFrom: null, ratingTo: null,
   tastingDateFrom: null, tastingDateTo: null,
 };
 
-export type SortOption  = 'tasting_date_desc' | 'tasting_date_asc' | 'rating_desc';
+export type SortOption =
+  | 'tasting_date_desc'
+  | 'tasting_date_asc'
+  | 'rating_desc'
+  | 'price_desc'
+  | 'price_asc';
 export type LoadState   = 'idle' | 'loading' | 'loaded' | 'error';
 
 // wine-schema.model.ts
@@ -1697,10 +1767,10 @@ export type FilterType =
 
 export interface WineSchemaField {
   field: string;
-  type: 'text' | 'number' | 'date' | 'rating' | 'multi-value';
+  type: 'text' | 'number' | 'date' | 'multi-value';   // reales Schema nutzt nur diese vier
   filter_type: FilterType;
   default_filter: boolean;
-  decimals?: number;   // nur für type 'number': 0 = Integer, 1/2 = Float-Präzision
+  decimals?: number;   // nur für type 'number': 0 = Integer (year), 1 = rating, 2 = price
 }
 
 // user-preferences.model.ts
@@ -1779,75 +1849,75 @@ export interface UserPreferences {
 
 ### Property 11: Kombinierte Filter — AND-Logik
 
-*For any* Kombination aktiver Filterkriterien (country, grape, yearFrom/To, ratingFrom/To, tastingDateFrom/To) und *for any* Wein in der gefilterten Ausgabe: Der Wein muss alle aktiven Filterkriterien gleichzeitig erfüllen. Kein Wein, der auch nur ein aktives Kriterium verletzt, darf in der Ausgabe erscheinen.
+*For any* Kombination aktiver Filterkriterien (dropdowns: country/type/producer/quality, multiSelects: grape/origin, yearFrom/To, ratingFrom/To, tastingDateFrom/To) und *for any* Wein in der gefilterten Ausgabe: Der Wein muss alle aktiven Filterkriterien gleichzeitig erfüllen (AND zwischen Feldern; OR innerhalb eines Multiselect-Feldes). Kein Wein, der auch nur ein aktives Kriterium verletzt, darf in der Ausgabe erscheinen.
 
-**Validates: Requirements 9.12**
+**Validates: Requirements 9.13**
 
 ### Property 12: InfoToggle wirkt auf alle Kacheln
 
 *For any* Menge gerenderter WineTiles mit beliebigem lokalem Overlay-Zustand: Wenn `infoToggleActive === true`, muss `overlayVisible` für jede einzelne Kachel `true` sein — unabhängig vom jeweiligen `localOverlay`-Zustand.
 
-**Validates: Requirements 9.16**
+**Validates: Requirements 9.17**
 
 ### Property 13: InfoToggle-Roundtrip
 
 *For any* WineTile-Zustand: Das Aktivieren von `infoToggleActive` gefolgt vom Deaktivieren muss `overlayVisible` bei jeder Kachel wieder ausschließlich durch `localOverlay` bestimmen lassen — der Ausgangszustand ist vollständig wiederhergestellt.
 
-**Validates: Requirements 9.17**
+**Validates: Requirements 9.18**
 
 ### Property 14: Reihenfolge nach Filterung erhalten
 
-*For any* Filteroperation auf einer sortierten Weinliste: Die Reihenfolge der Weine in `visibleWines` muss exakt der Reihenfolge in `filteredWines` entsprechen — keine Umsortierung durch Rendering oder EndlessScroll.
+*For any* Filteroperation auf einer sortierten Weinliste: Die Reihenfolge der Weine in `visibleWines` muss exakt der Reihenfolge in `filteredWines` entsprechen — keine Umsortierung durch das Rendering (es werden ohnehin alle gefilterten Weine direkt gerendert).
 
-**Validates: Requirements 10.1**
+**Validates: Requirements 11.1**
 
 ### Property 15: WineTileOverlay — Datenvollständigkeit
 
 *For any* Wine-Objekt mit einer beliebigen Teilmenge der Overlay-Felder (Name, Jahr, Herkunftsregion, Typ, Weingut, Rating, Rebsorte): Die gerenderte WineTileOverlay-Komponente muss alle im Objekt vorhandenen (nicht-null) Overlay-Felder anzeigen.
 
-**Validates: Requirements 11.4**
+**Validates: Requirements 12.4**
 
 ### Property 16: WineDetailDialog — Feldvollständigkeit
 
 *For any* Wine-Objekt mit beliebigen Feldern (bekannte Pflicht- und Optionalfelder sowie unbekannte Zusatzfelder): Der WineDetailDialog muss alle im Objekt vorhandenen Felder anzeigen — kein Feld darf ausgelassen werden.
 
-**Validates: Requirements 13.2**
+**Validates: Requirements 14.2**
 
 ### Property 17: ETag-Konflikt-Erkennung
 
 *For any* Weineintrag: Wenn zwei `PUT /api/wines/{id}`-Anfragen dasselbe initiale ETag verwenden und die erste erfolgreich gespeichert wird, muss die zweite mit HTTP 409 abgelehnt werden.
 
-**Validates: Requirements 16.16**
+**Validates: Requirements 17.16**
 
 ### Property 18: WineSchema-Roundtrip
 
 *For any* gültige `wine-schema.json`-Datei: Das Einlesen durch `load_wine_schema` und das anschließende Serialisieren der zurückgegebenen `SchemaField`-Liste muss eine strukturell äquivalente JSON-Struktur ergeben — kein Datenverlust, keine Typenänderungen.
 
-**Validates: Requirements 17.1**
+**Validates: Requirements 18.1**
 
 ### Property 19: UserPreferences Cookie-Roundtrip
 
 *For any* `UserPreferences`-Objekt mit beliebiger Kombination aus `visibleFilters`, `sortOption` und `viewMode`: Das Speichern via `UserPreferencesService.save()` gefolgt von `UserPreferencesService.load()` muss das strukturell äquivalente Objekt zurückgeben — kein Datenverlust.
 
-**Validates: Requirements 18.1, 18.2, 18.3**
+**Validates: Requirements 19.1, 19.2, 19.3**
 
 ### Property 20: Last-Backup Rolling Window
 
 *For any* Sequenz von Pipeline-Läufen mit konfiguriertem `max_last_backups = N` und beliebigem `N ≥ 1`: Nach jedem Lauf darf die Anzahl der `last_`-Unterordner im `backup_dir` niemals größer als `N` sein.
 
-**Validates: Requirements 19.2, 19.3**
+**Validates: Requirements 20.2, 20.3**
 
 ### Property 21: Archival-Backup Intervall-Invariante
 
 *For any* Sequenz von Pipeline-Läufen mit `archival_interval_days = D`: Der zeitliche Abstand zwischen zwei aufeinanderfolgenden Archival-Backups muss stets ≥ D Tage betragen. Kein Archival-Backup wird erstellt, wenn weniger als D Tage seit dem letzten vergangen sind.
 
-**Validates: Requirements 19.4, 19.5**
+**Validates: Requirements 20.4, 20.5**
 
 ### Property 22: Migration — Verarbeitung gemäß geprüfter Mapping-Datei
 
 *For any* Menge von WordPress-postmeta-Einträgen und *for any* dazu passende `wordpress-mapping.json`, in der jeder vorkommende meta_key enthalten ist: Nach dem Migrations-Schritt gilt für jeden Eintrag — (1) ein Feld mit `action: "map"` erscheint unter seinem `target`-Feld im erzeugten JSON-Objekt, (2) ein Feld mit `action: "unmapped"` erscheint unter `wp_unmapped_{key}`, (3) ein Feld mit `action: "ignore"` erscheint in keiner Form im JSON-Objekt. Enthält die Mapping-Datei einen in den Dumps vorkommenden meta_key nicht, bricht die Migration mit einer Fehlermeldung ab (kein stilles Verwerfen).
 
-**Validates: Requirements 20.8, 20.9, 20.10, 20.11, 20.12**
+**Validates: Requirements 21.8, 21.9, 21.10, 21.11, 21.12**
 
 ---
 
@@ -1898,7 +1968,7 @@ export interface UserPreferences {
 
 ### Angular Frontend (Jasmine + fast-check)
 
-- **Unit-Tests**: WineDataService (HTTP-States, paralleles Laden), FilterService (Filterlogik, Cookie-Init), AppComponent, WineTileComponent (Overlay-Toggle, Play-Button), WineDetailDialogComponent (close, Backdrop-Click, Body-Scroll-Lock), NavComponent (Regionen/Rebsorten-Berechnung), UserPreferencesService (Cookie-Roundtrip), WineGridComponent (EndlessScroll, Zurück-Button)
+- **Unit-Tests**: WineDataService (HTTP-States, paralleles Laden), FilterService (Filterlogik inkl. dropdowns/multiSelects/Bound-Filter, resetFilterKey, Cookie-Init), AppComponent (Tastaturkürzel i/l inkl. Guard-Bedingungen), ControlsRowComponent (Filterkatalog, Mehr-Filter-Menü, removeFilter), FilterFieldComponent (Freitextsuche, Multiselect-Dropdown, Bound-Felder), SortButtonComponent (5 Optionen), WineTileComponent (Overlay-Toggle, Play-Button), WineDetailDialogComponent (close, Backdrop-Click, Body-Scroll-Lock), NavComponent (Logo-Klick = clearAllFilters + '/'), WineListItemComponent (Thumbnail + Felder), UserPreferencesService (Cookie-Roundtrip), WineGridComponent/WineListComponent (alle Weine gerendert, Zurück-Button)
 - **Property-Tests (fast-check)**: Properties 10–16, 19
   - `applyFiltersAndSort` — Properties 10, 11, 14 (pure function, kein DOM nötig)
   - WineTileComponent — Properties 12, 13, 15 (via TestBed)

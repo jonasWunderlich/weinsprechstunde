@@ -26,10 +26,12 @@ export interface Wine {
 
 export interface WineFilter {
   searchText: string;
-  // ein Slot je dropdown-Schemafeld (country, origin, type, producer, quality):
+  // Einzelauswahl-Dropdowns (country, type, producer, quality):
   // Wert = exakter Match oder null (inaktiv).
   dropdowns: Record<string, string | null>;
-  grape: string[]; // multi-select: leeres Array = inaktiv
+  // Multiselect-Dropdowns (grape, origin): leeres Array = inaktiv.
+  // OR innerhalb eines Feldes, AND zwischen Feldern.
+  multiSelects: Record<string, string[]>;
   yearFrom: number | null;
   yearTo: number | null;
   ratingFrom: number | null;
@@ -45,8 +47,8 @@ export interface NavigationFilter {
 
 export const EMPTY_FILTER: WineFilter = {
   searchText: '',
-  dropdowns: { country: null, origin: null, type: null, producer: null, quality: null },
-  grape: [],
+  dropdowns: { country: null, type: null, producer: null, quality: null },
+  multiSelects: { grape: [], origin: [] },
   yearFrom: null,
   yearTo: null,
   ratingFrom: null,
@@ -55,5 +57,10 @@ export const EMPTY_FILTER: WineFilter = {
   tastingDateTo: null,
 };
 
-export type SortOption = 'tasting_date_desc' | 'tasting_date_asc' | 'rating_desc';
+export type SortOption =
+  | 'tasting_date_desc'
+  | 'tasting_date_asc'
+  | 'rating_desc'
+  | 'price_desc'
+  | 'price_asc';
 export type LoadState = 'idle' | 'loading' | 'loaded' | 'error';

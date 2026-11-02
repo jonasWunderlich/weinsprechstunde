@@ -1,12 +1,6 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
-import {
-  EMPTY_FILTER,
-  NavigationFilter,
-  SortOption,
-  Wine,
-  WineFilter,
-} from '../models/wine.model';
-import { countBy, grapeList, slugify, valueList } from '../models/wine-util';
+import { EMPTY_FILTER, SortOption, Wine, WineFilter } from '../models/wine.model';
+import { valueList } from '../models/wine-util';
 import { WineDataService } from './wine-data.service';
 import { UserPreferencesService } from './user-preferences.service';
 
@@ -17,33 +11,26 @@ import { UserPreferencesService } from './user-preferences.service';
 export function applyFiltersAndSort(
   wines: Wine[],
   filter: WineFilter,
-  navFilter: NavigationFilter | null,
   sort: SortOption,
   searchFields: string[],
 ): Wine[] {
   const filtered = wines.filter((wine) => {
-    // 1. Navigation-Filter (Slug-Vergleich über slugify)
-    if (navFilter) {
-      if (navFilter.type === 'region') {
-        if (!wine.origin || slugify(wine.origin) !== navFilter.slug) return false;
-      } else {
-        if (!grapeList(wine).some((g) => slugify(g) === navFilter.slug)) return false;
-      }
-    }
-    // 2. Freitextsuche: case-insensitiv, NUR über schema-definierte text-search-Felder
+    // 1. Freitextsuche: case-insensitiv, NUR über schema-definierte text-search-Felder
     if (filter.searchText.trim()) {
       const q = filter.searchText.toLowerCase().trim();
       const haystacks = searchFields.flatMap((f) => valueList(wine, f));
       if (!haystacks.some((h) => h.toLowerCase().includes(q))) return false;
     }
-    // 3. Dropdown-Filter — generisch über dropdowns-Record
+    // 2. Einzelauswahl-Dropdowns (country, type, producer, quality)
     for (const [field, sel] of Object.entries(filter.dropdowns)) {
-      if (sel != null && String(wine[field] ?? '') !== sel) return false;
+      if (sel != null && !valueList(wine, field).includes(sel)) return false;
     }
-    // multi-select grape: OR innerhalb, AND gegenüber anderen Feldern
-    if (filter.grape.length > 0) {
-      const wineGrapes = grapeList(wine);
-      if (!filter.grape.some((g) => wineGrapes.includes(g))) return false;
+    // 3. Multiselect-Dropdowns (grape, origin): OR innerhalb, AND zwischen Feldern
+    for (const [field, selected] of Object.entries(filter.multiSelects)) {
+      if (selected.length > 0) {
+        const values = valueList(wine, field);
+        if (!selected.some((s) => values.includes(s))) return false;
+      }
     }
     // 4. Range-Filter (null = inaktiv; fehlender Wert fällt bei aktiver Grenze raus)
     if (filter.yearFrom != null && (wine.year == null || wine.year < filter.yearFrom)) return false;
@@ -66,10 +53,18 @@ export function applyFiltersAndSort(
   });
 
   return filtered.slice().sort((a, b) => {
-    if (sort === 'tasting_date_asc')
-      return (a.tasting_date ?? '').localeCompare(b.tasting_date ?? '');
-    if (sort === 'rating_desc') return (b.rating ?? 0) - (a.rating ?? 0);
-    return (b.tasting_date ?? '').localeCompare(a.tasting_date ?? ''); // tasting_date_desc (Default)
+    switch (sort) {
+      case 'tasting_date_asc':
+        return (a.tasting_date ?? '').localeCompare(b.tasting_date ?? '');
+      case 'rating_desc':
+        return (b.rating ?? 0) - (a.rating ?? 0);
+      case 'price_desc':
+        return (b.price ?? -Infinity) - (a.price ?? -Infinity);
+      case 'price_asc':
+        return (a.price ?? Infinity) - (b.price ?? Infinity);
+      default: // tasting_date_desc
+        return (b.tasting_date ?? '').localeCompare(a.tasting_date ?? '');
+    }
   });
 }
 
@@ -83,7 +78,6 @@ export class FilterService {
   private readonly prefs = inject(UserPreferencesService);
 
   readonly filter = signal<WineFilter>({ ...EMPTY_FILTER });
-  readonly navigationFilter = signal<NavigationFilter | null>(null);
   readonly sortOption = signal<SortOption>('tasting_date_desc');
   readonly viewMode = signal<'grid' | 'list'>('grid');
   readonly infoToggleActive = signal(false);
@@ -108,24 +102,17 @@ export class FilterService {
     applyFiltersAndSort(
       this.wineData.wines(),
       this.filter(),
-      this.navigationFilter(),
       this.sortOption(),
       this.searchFields(),
     ),
   );
 
-  readonly availableRegions = computed(() => countBy(this.wineData.wines(), (w) => [w.origin]));
-  readonly availableGrapes = computed(() =>
-    countBy(this.wineData.wines(), (w) => valueList(w, 'grape')),
-  );
-
   readonly hasActiveFilter = computed(() => {
     const f = this.filter();
     return (
-      this.navigationFilter() !== null ||
       f.searchText.trim() !== '' ||
-      f.grape.length > 0 ||
       Object.values(f.dropdowns).some((v) => v !== null) ||
+      Object.values(f.multiSelects).some((v) => v.length > 0) ||
       f.yearFrom !== null ||
       f.yearTo !== null ||
       f.ratingFrom !== null ||
@@ -135,18 +122,9 @@ export class FilterService {
     );
   });
 
-  setNavigationFilter(type: 'region' | 'rebsorte', slug: string): void {
-    this.navigationFilter.set({ type, slug });
-  }
-
-  clearNavigationFilter(): void {
-    this.navigationFilter.set(null);
-  }
-
   /** Setzt NUR die Filterwerte zurück; Konfiguration (Sichtbarkeit/Sort/View) bleibt. */
   clearAllFilters(): void {
     this.filter.set({ ...EMPTY_FILTER });
-    this.navigationFilter.set(null);
   }
 
   setSortOption(opt: SortOption): void {
@@ -166,7 +144,36 @@ export class FilterService {
       else set.delete(field);
       return [...set];
     });
+    // Beim Ausblenden den zugehörigen Filterwert zurücksetzen, damit ein
+    // entfernter Filter nicht unsichtbar weiterwirkt.
+    if (!visible) this.resetFilterKey(field);
     this._savePrefs();
+  }
+
+  /** Setzt den Filterwert eines einzelnen optionalen Filter-Keys zurück. */
+  resetFilterKey(key: string): void {
+    this.filter.update((f) => {
+      switch (key) {
+        case 'grape':
+        case 'origin':
+          return { ...f, multiSelects: { ...f.multiSelects, [key]: [] } };
+        case 'country':
+        case 'type':
+        case 'producer':
+        case 'quality':
+          return { ...f, dropdowns: { ...f.dropdowns, [key]: null } };
+        case 'yearFrom':
+        case 'yearTo':
+        case 'ratingFrom':
+        case 'ratingTo':
+          return { ...f, [key]: null };
+        case 'tastingDateFrom':
+        case 'tastingDateTo':
+          return { ...f, [key]: null };
+        default:
+          return f;
+      }
+    });
   }
 
   updateFilter(patch: Partial<WineFilter>): void {

@@ -20,6 +20,16 @@
   }
 }
 
+.li-cover {
+  flex: 0 0 auto;
+  display: block;
+  width: 3rem;
+  height: 3rem;
+  border-radius: var(--radius-input);
+  overflow: hidden;
+  background: var(--color-surface-alt, #f0e9e4);
+}
+
 .li-name {
   flex: 1 1 auto;
   font-weight: 600;

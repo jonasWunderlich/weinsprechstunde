@@ -36,25 +36,18 @@ describe('WineGridComponent', () => {
     return { fixture, c: fixture.componentInstance, fsMock, dialog, router, filtered };
   }
 
-  it('visibleCount startet bei PAGE_SIZE und wächst bei Sentinel', () => {
+  it('visibleWines zeigt alle gefilterten Weine ohne Paginierung', () => {
     const { c } = setup(makeWines(100));
-    expect(c.visibleCount()).toBe(24);
-    c.onSentinelVisible();
-    expect(c.visibleCount()).toBe(48);
+    expect(c.visibleWines().length).toBe(100);
+    expect(c.visibleWines().map((w) => w.name)).toEqual(makeWines(100).map((w) => w.name));
   });
 
-  it('Reset von visibleCount bei Filteränderung', () => {
+  it('visibleWines folgt Filteränderungen vollständig', () => {
     const { c, filtered, fixture } = setup(makeWines(100));
-    c.onSentinelVisible();
-    expect(c.visibleCount()).toBe(48);
+    expect(c.visibleWines().length).toBe(100);
     filtered.set(makeWines(30));
     fixture.detectChanges();
-    expect(c.visibleCount()).toBe(24);
-  });
-
-  it('visibleWines ist Prefix der gefilterten Liste', () => {
-    const { c } = setup(makeWines(100));
-    expect(c.visibleWines().map((w) => w.name)).toEqual(makeWines(24).map((w) => w.name));
+    expect(c.visibleWines().length).toBe(30);
   });
 
   it('Back-Button-Sichtbarkeit folgt hasActiveFilter', () => {

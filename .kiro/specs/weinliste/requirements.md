@@ -36,9 +36,8 @@ Die Anwendung richtet sich sowohl an Weinkenner (Autoren Toni und Simone sowie G
 - **WineSchema**: Die Datei `wine-schema.json` im Projekt-Root, die für jedes bekannte Weinattribut den Datentyp (`type`), den Filter-Typ (`filter_type`), ob es standardmäßig als Filter angezeigt wird (`default_filter`) und optional für `number`-Felder die Anzahl der Nachkommastellen (`decimals`: `0` = Integer, `1`/`2` = Float mit entsprechender Präzision) definiert. Wird von Python-Skript, Angular-Frontend und Wine-Editor gemeinsam genutzt.
 - **FilterType**: Der Filtertyp eines Feldes laut WineSchema. Mögliche Werte: `text-search`, `range`, `date-range`, `dropdown`, `rating-range`, `multi-select`, oder `null` (nicht filterbar).
 - **FilterService**: Der zentrale Angular-Service der den gesamten Filter-, Such- und Sortierzustand der App verwaltet. Alle Komponenten und Routen lesen gefilterte Weine ausschließlich über den FilterService. Keine Filterlogik darf außerhalb des FilterService implementiert werden.
-- **NavigationFilter**: Ein URL-basierter Filter der durch Klick auf einen Navigationsmenüpunkt (Region oder Rebsorte) gesetzt wird. Wird im FilterService verwaltet und in der URL als `/region/{slug}` oder `/rebsorte/{slug}` repräsentiert, ohne dass Weindaten neu geladen werden.
 - **UserPreferences**: Im Browser-Cookie `ws_prefs` gespeicherte Benutzereinstellungen ohne festes Ablaufdatum: welche zusätzlichen Filter eingeblendet sind (nur Feldnamen), gewählte Sortierung, aktive Ansicht (Grid oder Liste).
-- **ActiveFilters**: Die in der ControlsRow aktuell sichtbaren Filter — Standard-Filter plus vom Benutzer zusätzlich eingeblendete.
+- **ActiveFilters**: Die in der ControlsRow aktuell sichtbaren Filter — die fest sichtbare Freitextsuche plus vom Benutzer zusätzlich eingeblendete optionale Filter.
 - **WineDataAsset**: Die Datei `wines.json`, die als Angular-Asset ausgeliefert wird und ausschließlich durch das ImportScript erzeugt wird.
 - **PhasePreparate** (Phase `prepare`): Die erste Phase des ImportScripts, die JSON-Quelldateien aufbereitet: EXIF-Daten liest, Dateien umbenennt und Felder gemäß WineSchema aufbereitet.
 - **PhaseExport** (Phase `export`): Die zweite Phase des ImportScripts, die aufbereitete JSON-Quelldateien liest, sortiert und die WineDataAsset schreibt.
@@ -55,19 +54,19 @@ Die Anwendung richtet sich sowohl an Weinkenner (Autoren Toni und Simone sowie G
 - **WineTile**: Eine Kachel in der Kachelansicht, die einen Wein mit Bild, Rating-Kreis und Meta-Overlay darstellt.
 - **WineTileOverlay**: Das Info-Overlay einer WineTile mit Weindetails (Jahr, Name, Weingut, Rebsorte(n), Rating-Kreis, Region).
 - **WineTileCover**: Der Bildbereich einer WineTile mit Fallback auf PlaceholderIcon.
-- **WineListItem**: Eine kompakte Zeile in der Listenansicht (Name, Weingut, Jahr, Herkunftsland, Rating).
+- **WineListItem**: Eine kompakte Zeile in der Listenansicht mit einem kleinen Weinbild-Thumbnail (wiederverwendeter WineTileCover mit PlaceholderIcon-Fallback) sowie Name, Weingut, Jahr, Herkunftsland und Rating.
 - **WineDetailDialog**: Ein modaler Dialog mit allen Details eines Weins inkl. AudioPlayer (wenn `audio` vorhanden) und VideoPlayer (wenn `video` vorhanden).
 - **ControlsRow**: Die Zeile unterhalb der NavBar mit Freitextsuche, ActiveFilters, „Mehr Filter"-Button, Sortierung, InfoToggle und ListToggle.
-- **NavBar**: Die Navigationszeile am oberen Rand der App mit App-Name „Weinsprechstunde" und Logo-Platzhalter.
-- **WineGrid**: Die Kachelansicht aller gefilterten Weine mit EndlessScroll.
-- **WineList**: Die Listenansicht aller gefilterten Weine mit EndlessScroll.
+- **NavBar**: Die Navigationszeile am oberen Rand der App mit App-Name „Weinsprechstunde" und Logo-Platzhalter. Ein Klick auf das Logo setzt alle aktiven Filter zurück und navigiert zur Route `/`. Die NavBar enthält keine Navigationsmenüpunkte.
+- **WineGrid**: Die Kachelansicht aller gefilterten Weine. Alle gefilterten Weine werden direkt gerendert (keine Paginierung, kein Nachladen).
+- **WineList**: Die Listenansicht aller gefilterten Weine. Alle gefilterten Weine werden direkt gerendert (keine Paginierung, kein Nachladen).
 - **PlaceholderIcon**: Ein SVG- oder eingebettetes Icon als Fallback, wenn kein Weinbild verfügbar ist.
 - **InfoToggle**: Ein Schalter in der ControlsRow, der das WineTileOverlay auf allen WineTiles dauerhaft ein- oder ausschaltet.
 - **ListToggle**: Ein Schalter in der ControlsRow, der zwischen Kachelansicht (WineGrid) und Listenansicht (WineList) wechselt.
 - **RatingCircle**: Eine kreisförmige visuelle Darstellung des Ratings (1.0–10.0) in der oberen rechten Ecke des WineTileOverlays und im WineDetailDialog.
 - **AudioPlayer**: Eine eingebettete Audiowiedergabe-Komponente im WineDetailDialog, die erscheint wenn ein Wein ein `audio`-Feld besitzt.
 - **VideoPlayer**: Eine eingebettete Videowiedergabe-Komponente im WineDetailDialog, die erscheint wenn ein Wein ein `video`-Feld besitzt.
-- **EndlessScroll**: Mechanismus, der weitere WineTiles bzw. WineListItems nachlädt/rendert, sobald der Benutzer ans Ende der sichtbaren Liste scrollt.
+- **KeyboardShortcuts**: Globale Tastaturkürzel der App: `i` schaltet das WineTileOverlay auf allen WineTiles um (wie InfoToggle), `l` wechselt zwischen Kachel- und Listenansicht (wie ListToggle).
 - **tasting_date**: ISO-8601-Datumsstring (z. B. `"2021-10-12"`), der das Verkostungsdatum eines Weins angibt und entweder manuell in der JSON-Quelldatei gesetzt oder vom ImportScript aus EXIF-Daten des Bildes abgeleitet wird.
 - **WineEditorApp**: Die eigenständige Web-App zur komfortablen Pflege der JSON-Quelldateien im `import_dir`, erreichbar über denselben Server wie die öffentliche Weinliste. Der Zugriffspfad (URL-Pfad) des Editors ist über `editor.path` in der ConfigFile konfigurierbar und muss nicht öffentlich bekannt sein.
 - **ImagePicker**: Eine durchsuchbare Bildauswahl-Komponente in der WineEditorApp, die Bilddateien aus dem `import_dir` anzeigt, standardmäßig gefiltert auf noch nicht zugeordnete Bilder.
@@ -199,24 +198,18 @@ Die Anwendung richtet sich sowohl an Weinkenner (Autoren Toni und Simone sowie G
 4. IF der HTTP-GET-Request der WineDataAsset fehlschlägt, THEN THE App SHALL eine lesbare Fehlermeldung im Hauptbereich anzeigen.
 5. THE App SHALL alle Weindaten einmalig beim Start vollständig laden — ohne Paginierung oder nachträgliches Nachladen von Weindaten bei Routenwechseln.
 6. THE App SHALL die gesamte Filterlogik in einem zentralen FilterService kapseln, der von allen Komponenten und Routen gemeinsam genutzt wird. Filterlogik darf nicht über die gesamte Anwendung verteilt sein.
-7. WHEN eine Route mit einem URL-Filter-Parameter aktiviert wird (z.B. `/region/rheingau`), THE App SHALL den FilterService mit dem entsprechenden Filter initialisieren, ohne Weindaten neu zu laden.
 
 ### Requirement 8: Navigation
 
-**User Story:** Als Benutzer möchte ich eine permanente Navigationszeile sehen, damit ich jederzeit weiß, in welcher Anwendung ich mich befinde.
+**User Story:** Als Benutzer möchte ich eine permanente Navigationszeile sehen, damit ich jederzeit weiß, in welcher Anwendung ich mich befinde, und jederzeit zur ungefilterten Startansicht zurückkehren kann.
 
 #### Acceptance Criteria
 
 1. THE App SHALL am oberen Rand der Seite dauerhaft eine NavBar anzeigen.
 2. THE NavBar SHALL den Anwendungsnamen „Weinsprechstunde" anzeigen.
 3. THE NavBar SHALL einen Logo-Platzhalter links neben dem Anwendungsnamen anzeigen.
-4. THE NavBar SHALL einen Navigationsbereich enthalten mit den Menüpunkten „Regionen" und „Rebsorten".
-5. WHEN ein Benutzer den Menüpunkt „Regionen" öffnet, THE NavBar SHALL alle in den Weindaten vorhandenen Regionen (`origin`-Feld) als klickbare Links anzeigen, jeweils mit der Anzahl der Weine dieser Region in Klammern (z.B. „Rheingau (7)").
-6. WHEN ein Benutzer den Menüpunkt „Rebsorten" öffnet, THE NavBar SHALL alle in den Weindaten vorhandenen Rebsorten (`grape`-Feld) als klickbare Links anzeigen, jeweils mit der Anzahl der Weine dieser Rebsorte in Klammern (z.B. „Riesling (12)").
-7. WHEN ein Benutzer auf einen Regions-Link klickt, THE App SHALL die Weinliste auf Weine dieser Region filtern, die URL auf `/region/{region-slug}` setzen und den Menüpunkt schließen.
-8. WHEN ein Benutzer auf einen Rebsorten-Link klickt, THE App SHALL die Weinliste auf Weine dieser Rebsorte filtern, die URL auf `/rebsorte/{rebsorte-slug}` setzen und den Menüpunkt schließen.
-9. WHEN eine Route `/region/{slug}` oder `/rebsorte/{slug}` aufgerufen wird, THE App SHALL den entsprechenden Filter im FilterService setzen, ohne Weindaten neu zu laden.
-10. WHEN ein Benutzer die gefilterte Ansicht verlässt (z.B. auf das Logo klickt), THE App SHALL den Navigationsfilter zurücksetzen und die URL auf `/` setzen.
+4. THE NavBar SHALL keine Navigationsmenüpunkte enthalten (insbesondere keine Menüpunkte „Regionen" oder „Rebsorten"). Filtern nach Region oder Rebsorte erfolgt ausschließlich über die ControlsRow.
+5. WHEN ein Benutzer auf den Logo-Platzhalter bzw. den Anwendungsnamen klickt, THE App SHALL alle aktiven Filter zurücksetzen und die URL auf `/` setzen.
 
 ### Requirement 9: Controls Row
 
@@ -225,37 +218,52 @@ Die Anwendung richtet sich sowohl an Weinkenner (Autoren Toni und Simone sowie G
 #### Acceptance Criteria
 
 1. THE App SHALL unterhalb der NavBar dauerhaft eine ControlsRow anzeigen.
-2. THE ControlsRow SHALL eine Freitextsuche enthalten, die den eingegebenen Text case-insensitiv mit allen Feldern vergleicht, deren `filter_type` in der WineSchema `text-search` ist.
-3. THE ControlsRow SHALL als Standard-Filter folgende Filter immer sichtbar anzeigen: Freitextsuche, Grape (multi-select), Rating (rating-range von/bis, Schrittweite 0.1), Verkostungsdatum (date-range von/bis).
-4. THE ControlsRow SHALL einen „Mehr Filter"-Button enthalten, der alle weiteren in der WineSchema als filterbar definierten Felder (filter_type nicht null) als zuschaltbare Filter anzeigt.
-5. WHEN der Benutzer über den „Mehr Filter"-Button einen zusätzlichen Filter einblendet, THE App SHALL diesen Filter in der ControlsRow anzeigen und die Auswahl im UserPreferences-Cookie speichern.
-6. WHEN der Benutzer einen eingeblendeten Zusatzfilter ausblendet, THE App SHALL ihn aus der ControlsRow entfernen und den Cookie aktualisieren.
-7. THE ControlsRow SHALL für Felder mit filter_type `multi-select` eine Mehrfachauswahl-Komponente anzeigen, die Werte aus den vorhandenen Weindaten vorschlägt.
-8. THE ControlsRow SHALL für Felder mit filter_type `dropdown` ein Dropdown mit Einzelauswahl anzeigen, das Werte aus den vorhandenen Weindaten vorschlägt.
-9. THE ControlsRow SHALL für Felder mit filter_type `range` zwei Zahleneingaben (von/bis) anzeigen.
-10. THE ControlsRow SHALL für Felder mit filter_type `date-range` zwei Datumseingaben (von/bis) anzeigen.
-11. THE ControlsRow SHALL für Felder mit filter_type `rating-range` zwei Eingaben (von/bis) mit Schrittweite 0.1 im Bereich 1.0–10.0 anzeigen.
-12. WHEN der Benutzer einen oder mehrere Filter setzt, THE App SHALL die aktive Ansicht auf Weine eingrenzen, die alle aktiven Filterkriterien gleichzeitig erfüllen (AND-Logik).
-13. THE ControlsRow SHALL eine Sortierungsauswahl mit folgenden Optionen enthalten: neueste Verkostung zuerst (Standard), älteste Verkostung zuerst, Rating absteigend. Die gewählte Option wird im UserPreferences-Cookie gespeichert.
-14. WHEN der Benutzer eine Sortieroption auswählt, THE App SHALL die aktive Ansicht sofort entsprechend neu sortieren.
-15. THE ControlsRow SHALL einen InfoToggle enthalten, der das WineTileOverlay auf allen WineTiles dauerhaft aktiviert oder deaktiviert.
-16. WHEN der Benutzer den InfoToggle aktiviert, THE App SHALL das WineTileOverlay auf allen WineTiles dauerhaft sichtbar machen, unabhängig von Hover- oder Klick-Ereignissen.
-17. WHEN der Benutzer den InfoToggle deaktiviert, THE App SHALL das WineTileOverlay auf WineTiles wieder ausschließlich durch Hover (Desktop) oder Klick (Mobil) auslösbar machen.
-18. THE ControlsRow SHALL einen ListToggle enthalten, der zwischen Kachelansicht (WineGrid) und Listenansicht (WineList) wechselt. Die gewählte Ansicht wird im UserPreferences-Cookie gespeichert.
-19. WHEN der Benutzer den ListToggle betätigt, THE App SHALL die aktive Ansicht zwischen WineGrid und WineList umschalten, wobei aktive Filter und Sortierung erhalten bleiben.
+2. THE ControlsRow SHALL eine Freitextsuche enthalten, die den eingegebenen Text case-insensitiv mit allen Feldern vergleicht, deren `filter_type` in der WineSchema `text-search` ist (aktuell nur `name`).
+3. THE ControlsRow SHALL als einzigen fest sichtbaren Filter die Freitextsuche anzeigen. Alle übrigen Filter SHALL optional und einzeln über den „Mehr Filter"-Button zuschaltbar sein.
+4. THE Freitextsuche SHALL das Label „Filter" tragen und einen nutzerorientierten Platzhalter anzeigen, der die durchsuchbaren Eigenschaften benennt (z. B. „Name, Weingut, Rebsorte, Region …"). Der Platzhalter beschreibt die inhaltliche Erwartung des Benutzers; technisch vergleicht die Freitextsuche ausschließlich die in der WineSchema als `text-search` definierten Felder.
+5. THE ControlsRow SHALL einen „Mehr Filter"-Button enthalten, der alle optional zuschaltbaren Filter als einzeln an- und abwählbare Einträge anzeigt. Dazu zählen die Multiselect-Filter Rebsorte (`grape`) und Region (`origin`), die Einzelauswahl-Dropdowns (`country`, `type`, `producer`, `quality`) sowie die einzeln zuschaltbaren Bound-Filter „Bewertung ab", „Bewertung bis", „Verkostung ab", „Verkostung bis", „Jahrgang ab" und „Jahrgang bis".
+6. WHEN der Benutzer über den „Mehr Filter"-Button einen optionalen Filter einblendet, THE App SHALL diesen Filter in der ControlsRow anzeigen und die Auswahl im UserPreferences-Cookie speichern.
+7. WHEN der Benutzer einen eingeblendeten optionalen Filter ausblendet — entweder durch Abwählen in der „Mehr Filter"-Liste oder über das Entfernen-Icon am Filter selbst —, THE App SHALL ihn aus der ControlsRow entfernen, den zugehörigen Filterwert zurücksetzen und den Cookie aktualisieren.
+8. THE ControlsRow SHALL jedem eingeblendeten optionalen Filter ein kleines Entfernen-Icon (✕) neben dem Label hinzufügen, über das der Filter direkt entfernt werden kann.
+9. WHEN ein optionaler Filter entfernt wird, THE App SHALL nicht nur dessen Sichtbarkeit aufheben, sondern auch seinen Filterwert zurücksetzen, sodass kein ausgeblendeter Filter unsichtbar weiterwirkt.
+10. THE ControlsRow SHALL für Felder mit filter_type `multi-select` (Rebsorte, Region) ein kompaktes, aufklappbares Dropdown anzeigen: einen Trigger-Button mit Zusammenfassung des aktuellen Zustands („Alle" / einzelner gewählter Wert / „n gewählt"), der auf Klick ein scrollbares Panel mit Checkbox-Optionen öffnet; das Panel enthält die Aktionen „Zurücksetzen" und „Fertig". Die auswählbaren Werte stammen aus den vorhandenen Weindaten. Die Mehrfachauswahl wird NICHT als dauerhaft sichtbare Liste dargestellt, damit sie auf viele Rebsorten skaliert.
+11. THE ControlsRow SHALL für Felder mit filter_type `dropdown` (`country`, `type`, `producer`, `quality`) ein Dropdown mit Einzelauswahl anzeigen, das Werte aus den vorhandenen Weindaten vorschlägt.
+12. THE ControlsRow SHALL jede Range-Grenze als eigenen, unabhängig zuschaltbaren Bound-Filter anzeigen: „Bewertung ab" und „Bewertung bis" (je eine Zahleneingabe mit Schrittweite 0.1 im Bereich 1.0–10.0), „Jahrgang ab" und „Jahrgang bis" (je eine Zahleneingabe) sowie „Verkostung ab" und „Verkostung bis" (je eine Datumseingabe). Jeder Bound-Filter ist optional und unabhängig von seiner Gegengrenze zuschaltbar.
+13. WHEN der Benutzer einen oder mehrere Filter setzt, THE App SHALL die aktive Ansicht auf Weine eingrenzen, die alle aktiven Filterkriterien gleichzeitig erfüllen (AND-Logik). Bei Multiselect-Filtern gilt innerhalb eines Feldes OR-Logik, zwischen den Feldern AND-Logik.
+14. THE ControlsRow SHALL eine Sortierungsauswahl mit folgenden Optionen enthalten: „Neueste Verkostung zuerst" (Standard), „Älteste Verkostung zuerst", „Beste Bewertung zuerst" (Rating absteigend), „Teuerste zuerst" (Preis absteigend) und „Günstigste zuerst" (Preis aufsteigend). Die gewählte Option wird im UserPreferences-Cookie gespeichert.
+15. WHEN der Benutzer eine Sortieroption auswählt, THE App SHALL die aktive Ansicht sofort entsprechend neu sortieren.
+16. THE ControlsRow SHALL einen InfoToggle enthalten, der das WineTileOverlay auf allen WineTiles dauerhaft aktiviert oder deaktiviert.
+17. WHEN der Benutzer den InfoToggle aktiviert, THE App SHALL das WineTileOverlay auf allen WineTiles dauerhaft sichtbar machen, unabhängig von Hover- oder Klick-Ereignissen.
+18. WHEN der Benutzer den InfoToggle deaktiviert, THE App SHALL das WineTileOverlay auf WineTiles wieder ausschließlich durch Hover (Desktop) oder Klick (Mobil) auslösbar machen.
+19. THE ControlsRow SHALL einen ListToggle enthalten, der zwischen Kachelansicht (WineGrid) und Listenansicht (WineList) wechselt. Die gewählte Ansicht wird im UserPreferences-Cookie gespeichert.
+20. WHEN der Benutzer den ListToggle betätigt, THE App SHALL die aktive Ansicht zwischen WineGrid und WineList umschalten, wobei aktive Filter und Sortierung erhalten bleiben.
+21. THE InfoToggle- und ListToggle-Buttons SHALL je einen `title`-Hinweis auf das zugehörige Tastaturkürzel tragen („Tastenkürzel: i" bzw. „Tastenkürzel: l").
 
-### Requirement 10: Kachelansicht – WineGrid
+### Requirement 10: Tastaturkürzel
+
+**User Story:** Als Benutzer möchte ich die Infos und die Ansicht per Tastatur umschalten können, damit ich die App schneller bedienen kann.
+
+#### Acceptance Criteria
+
+1. THE App SHALL globale Tastaturkürzel bereitstellen: `i` schaltet das WineTileOverlay auf allen WineTiles um (wie der InfoToggle), `l` wechselt zwischen Kachel- und Listenansicht (wie der ListToggle).
+2. WHEN der Benutzer die Taste `i` drückt und keine Ausnahmebedingung vorliegt, THE App SHALL den InfoToggle-Zustand umschalten.
+3. WHEN der Benutzer die Taste `l` drückt und keine Ausnahmebedingung vorliegt, THE App SHALL zwischen WineGrid und WineList umschalten.
+4. WHILE der Fokus in einem Eingabefeld (`input`, `textarea`, `select` oder einem `contenteditable`-Element) liegt, THE App SHALL die Tastaturkürzel NICHT auslösen.
+5. WHILE der WineDetailDialog geöffnet ist, THE App SHALL die Tastaturkürzel NICHT auslösen.
+6. WHEN ein Tastendruck mit einer Modifier-Taste (Ctrl, Cmd/Meta oder Alt) kombiniert ist, THE App SHALL die Tastaturkürzel NICHT auslösen.
+
+### Requirement 11: Kachelansicht – WineGrid
 
 **User Story:** Als Benutzer möchte ich alle Weine in einer übersichtlichen Kachelung sehen, wobei die neuesten Verkostungen zuerst erscheinen.
 
 #### Acceptance Criteria
 
 1. THE App SHALL gefilterte und sortierte Weine im WineGrid in einer responsiven Kachelung anzeigen.
-2. WHEN der Benutzer beim Scrollen das Ende des aktuell gerenderten WineGrids erreicht, THE App SHALL weitere WineTiles nachladen, bis alle gefilterten Weine gerendert sind (EndlessScroll).
+2. THE App SHALL alle gefilterten und sortierten Weine im WineGrid direkt rendern, ohne Paginierung und ohne Nachladen beim Scrollen — die Weindaten sind beim Start bereits vollständig im Browser geladen.
 3. WHEN keine Weine den aktiven Filterkriterien entsprechen, THE App SHALL eine Hinweismeldung anzeigen, dass keine Ergebnisse gefunden wurden.
-4. WHEN ein NavigationFilter oder ein ControlsRow-Filter aktiv ist, THE WineGrid SHALL als erstes Element vor der ersten WineTile einen Zurück-Button anzeigen, der dieselbe Größe und denselben Platz wie eine WineTile einnimmt. WHEN der Benutzer den Zurück-Button klickt, THE App SHALL alle aktiven Filter zurücksetzen und die URL auf `/` setzen.
+4. WHEN ein ControlsRow-Filter aktiv ist (`hasActiveFilter`), THE WineGrid SHALL als erstes Element vor der ersten WineTile einen Zurück-Button anzeigen, der dieselbe Größe und denselben Platz wie eine WineTile einnimmt. WHEN der Benutzer den Zurück-Button klickt, THE App SHALL alle aktiven Filter zurücksetzen und die URL auf `/` setzen.
 
-### Requirement 11: WineTile
+### Requirement 12: WineTile
 
 **User Story:** Als Benutzer möchte ich auf einen Blick die wichtigsten Infos eines Weins auf der Kachel sehen.
 
@@ -271,19 +279,19 @@ Die Anwendung richtet sich sowohl an Weinkenner (Autoren Toni und Simone sowie G
 8. WHEN ein Benutzer auf einem mobilen Gerät erneut auf eine WineTile mit sichtbarem WineTileOverlay tippt und der InfoToggle deaktiviert ist, THE WineTile SHALL das WineTileOverlay ausblenden.
 9. WHEN ein Wein ein `audio`-Feld oder ein `video`-Feld enthält, THE WineTile SHALL einen kleinen Play-Button auf der Kachel anzeigen, der beim Klick die Detailansicht öffnet.
 
-### Requirement 12: Listenansicht – WineList
+### Requirement 13: Listenansicht – WineList
 
 **User Story:** Als Benutzer möchte ich zwischen einer kompakten Listenansicht und der Kachelansicht wechseln können, um Weine schneller zu überfliegen.
 
 #### Acceptance Criteria
 
 1. THE App SHALL gefilterte und sortierte Weine im WineList als vertikale Liste von WineListItems anzeigen, wenn die Listenansicht aktiv ist.
-2. THE WineListItem SHALL folgende Informationen in einer kompakten Zeile anzeigen: Name, Weingut, Jahr, Herkunftsland, Rating.
-3. WHEN der Benutzer beim Scrollen das Ende der aktuell gerenderten WineList erreicht, THE App SHALL weitere WineListItems nachladen, bis alle gefilterten Weine gerendert sind (EndlessScroll).
+2. THE WineListItem SHALL in einer kompakten Zeile links ein kleines Weinbild-Thumbnail (wiederverwendeter WineTileCover mit PlaceholderIcon-Fallback, wenn kein Bild verfügbar ist) sowie Name, Weingut, Jahr, Herkunftsland und Rating anzeigen. Felder ohne Wert werden nicht angezeigt.
+3. THE App SHALL alle gefilterten und sortierten Weine im WineList direkt rendern, ohne Paginierung und ohne Nachladen beim Scrollen — die Weindaten sind beim Start bereits vollständig im Browser geladen.
 4. WHEN keine Weine den aktiven Filterkriterien entsprechen, THE App SHALL eine Hinweismeldung anzeigen, dass keine Ergebnisse gefunden wurden.
-5. WHEN ein NavigationFilter oder ein ControlsRow-Filter aktiv ist, THE WineList SHALL am Anfang der Liste einen Zurück-Button anzeigen. WHEN der Benutzer den Zurück-Button klickt, THE App SHALL alle aktiven Filter zurücksetzen und die URL auf `/` setzen.
+5. WHEN ein ControlsRow-Filter aktiv ist (`hasActiveFilter`), THE WineList SHALL am Anfang der Liste einen Zurück-Button anzeigen. WHEN der Benutzer den Zurück-Button klickt, THE App SHALL alle aktiven Filter zurücksetzen und die URL auf `/` setzen.
 
-### Requirement 13: WineDetailDialog
+### Requirement 14: WineDetailDialog
 
 **User Story:** Als Benutzer möchte ich alle verfügbaren Details eines Weins in einem Dialog sehen, wenn ich auf eine Kachel oder einen Listeneintrag klicke.
 
@@ -298,7 +306,7 @@ Die Anwendung richtet sich sowohl an Weinkenner (Autoren Toni und Simone sowie G
 7. WHEN ein Benutzer außerhalb des WineDetailDialogs klickt, THE App SHALL den WineDetailDialog schließen.
 8. WHEN der WineDetailDialog geöffnet ist, THE App SHALL das Scrollen des Hintergrundinhalts verhindern.
 
-### Requirement 14: Technik und Architektur
+### Requirement 15: Technik und Architektur
 
 **User Story:** Als Entwickler möchte ich, dass die App auf klar definierten Technologien basiert, damit die Codebasis wartbar und erweiterbar bleibt.
 
@@ -316,7 +324,7 @@ Die Anwendung richtet sich sowohl an Weinkenner (Autoren Toni und Simone sowie G
 10. THE App SHALL den FilterService als einzige Quelle der Wahrheit für alle aktiven Filterkriterien implementieren — keine Komponente darf Filter-State lokal halten der die Weinliste beeinflusst.
 11. THE App SOLL die Komponentenstruktur des bestehenden Angular Musikalben-Frontends als Orientierung nutzen, jedoch keine blindes Kopieren vornehmen — jede Komponente und jede Implementierungsentscheidung soll gezielt auf die Anforderungen dieser Anwendung zugeschnitten sein und eine saubere, elegante Implementierung anstreben.
 
-### Requirement 15: Zugriffsschutz Wine Editor
+### Requirement 16: Zugriffsschutz Wine Editor
 
 **User Story:** Als Autor (Toni, Simone) möchte ich, dass die Datenpflege-App sicher gegen unbefugten Zugriff ist, dabei aber einfach zu bedienen bleibt.
 
@@ -335,7 +343,7 @@ Die Anwendung richtet sich sowohl an Weinkenner (Autoren Toni und Simone sowie G
 11. THE WineEditorApp SHALL die authentifizierte Sitzung für 30 Tage aufrechterhalten, sodass der Benutzer sich nicht bei jedem Besuch erneut einloggen muss.
 12. WHEN das Session-Cookie abgelaufen oder ungültig ist, THE WineEditorApp SHALL den Benutzer zur Login-Seite weiterleiten.
 
-### Requirement 16: Wine Editor Web-App
+### Requirement 17: Wine Editor Web-App
 
 **User Story:** Als Autor (Toni, Simone) möchte ich alle Weineinträge über eine komfortable Web-Oberfläche anlegen und bearbeiten können, damit ich keine JSON-Dateien manuell im Texteditor pflegen muss.
 
@@ -358,7 +366,7 @@ Die Anwendung richtet sich sowohl an Weinkenner (Autoren Toni und Simone sowie G
 15. THE WineEditorApp SHALL das Löschen eines Weineintrags ermöglichen, wobei eine explizite Bestätigung durch den Benutzer erforderlich ist.
 16. WHEN mehrere Benutzer gleichzeitig denselben Weineintrag bearbeiten, THE WineEditorApp SHALL beim Speichern erkennen, dass die Datei seit dem letzten Laden verändert wurde, und den Benutzer vor dem Überschreiben warnen.
 
-### Requirement 17: Wine-Attribut-Schema
+### Requirement 18: Wine-Attribut-Schema
 
 **User Story:** Als Entwickler möchte ich alle Weinattribute mit ihrem Datentyp und Filter-Typ an einer zentralen Stelle definieren, damit Python-Skript, Frontend und Editor konsistent dieselbe Felddefinition verwenden.
 
@@ -371,7 +379,7 @@ Die Anwendung richtet sich sowohl an Weinkenner (Autoren Toni und Simone sowie G
 5. THE WineEditorApp SHALL die `wine-schema.json` beim Start laden und die Feldtypen zur Bestimmung der Eingabefelder im WineEditor verwenden.
 6. WHEN ein neues Feld in `wine-schema.json` hinzugefügt wird, THEN SHALL das neue Feld automatisch als Eingabefeld im WineEditor und als potentieller Filter in der ControlsRow verfügbar sein, ohne Code-Änderungen.
 
-### Requirement 18: Benutzereinstellungen (UserPreferences)
+### Requirement 19: Benutzereinstellungen (UserPreferences)
 
 **User Story:** Als Benutzer möchte ich, dass die App meine Filter-Auswahl, Sortierung und Ansicht zwischen Besuchen beibehält, damit ich nicht jedes Mal neu konfigurieren muss.
 
@@ -382,9 +390,9 @@ Die Anwendung richtet sich sowohl an Weinkenner (Autoren Toni und Simone sowie G
 3. THE Cookie SHALL keine aktiven Filterwerte speichern — nur die Konfiguration welche Filter sichtbar sind.
 4. WHEN die App startet, THE App SHALL die UserPreferences aus dem Cookie lesen und ControlsRow sowie Ansicht entsprechend initialisieren.
 5. WHEN der Benutzer eine Einstellung ändert (Filter ein-/ausblenden, Sortierung, Ansicht), THE App SHALL den Cookie sofort aktualisieren.
-6. WHEN kein Cookie vorhanden ist, THE App SHALL die Standard-Konfiguration aus dem WineSchema (`default_filter: true`) als initiale Filter-Auswahl verwenden.
+6. WHEN kein Cookie vorhanden ist, THE App SHALL ohne eingeblendete optionale Filter starten (leere Liste), sodass initial nur die fest sichtbare Freitextsuche angezeigt wird; Sortierung und Ansicht verwenden die Standardwerte (Sortierung „Neueste Verkostung zuerst", Ansicht Grid).
 
-### Requirement 19: Sicherheitskopien des Import-Ordners
+### Requirement 20: Sicherheitskopien des Import-Ordners
 
 **User Story:** Als Autor (Toni, Simone) möchte ich bei jedem Build eine aktuelle Sicherheitskopie und zusätzlich regelmäßige Archiv-Snapshots des Import-Ordners haben, damit ich sowohl auf den letzten Stand als auch auf ältere Versionen zurückgreifen kann.
 
@@ -400,7 +408,7 @@ Die Anwendung richtet sich sowohl an Weinkenner (Autoren Toni und Simone sowie G
 8. THE ImportScript SHALL den Zeitstempel des zuletzt erstellten Archival-Backups in einer Datei `backup/.last_archival` im lokalen Backup-Ordner speichern, um das Archival-Intervall korrekt zu berechnen.
 9. WHEN das Erstellen eines Backups fehlschlägt (lokal oder remote, Last oder Archival), THE ImportScript SHALL eine Warnung auf der Standardfehlerausgabe ausgeben und die Pipeline trotzdem fortsetzen — ein fehlgeschlagenes Backup stoppt nicht den Build.
 
-### Requirement 20: Einmalige WordPress-Datenmigration
+### Requirement 21: Einmalige WordPress-Datenmigration
 
 **User Story:** Als Autor (Toni, Simone) möchte ich meine bereits in WordPress gepflegten Weindaten einmalig importieren, dabei aber vorher kontrollieren welche WordPress-Felder wie übernommen werden, damit ich keine unerwünschten oder falsch zugeordneten Daten in die erste Datengrundlage übernehme.
 

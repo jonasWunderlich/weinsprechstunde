@@ -1,0 +1,117 @@
+<app-album-tile-cover [album]="album" [lazy]="true" />
+
+<div class="column artist-and-album">
+  <div class="rating">
+    @if (album.rating) {
+      <div class="rating-circle">{{ album.rating }}</div>
+    } @else {
+      <div></div>
+    }
+  </div>
+
+  <div class="album-artist link-list">
+    @for (item of album.albumArtist; track $index) {
+      <app-album-tile-filter-link filter="albumArtist" [value]="item.trim()">{{
+        item.trim()
+      }}</app-album-tile-filter-link>
+      @if (!$last) {
+        <span class="separator"></span>
+      }
+    }
+    @if (album.albumArtist?.length === 0) {
+      <app-album-tile-filter-link filter="albumArtist" [value]="album.artist">{{
+        album.artist
+      }}</app-album-tile-filter-link>
+    }
+    @if (album.fan) {
+      <span class="inline-icon" title="Fan/Favorite">❤️</span>
+    }
+  </div>
+  <div class="album-title">
+    @if (album.urlAlbum) {
+      <a [href]="album.urlAlbum" target="_blank">{{ album.title }}</a>
+    } @else {
+      {{ album.title }}
+    }
+  </div>
+  <div class="publishers-and-year" [title]="album.publisher">
+    <app-album-tile-filter-link class="release-year" filter="releaseYear" [value]="album.releaseYear">{{
+      album.releaseYear
+    }}</app-album-tile-filter-link>
+    @if (album.publisher && album.publisher.length > 0) {
+      <span class="separator-highlight"></span>
+    }
+    <div class="publishers link-list">
+      @for (item of album.publisher; track $index) {
+        <app-album-tile-filter-link filter="publisher" [value]="item.trim()">{{
+          item.trim()
+        }}</app-album-tile-filter-link>
+        @if (!$last) {
+          <span class="separator"></span>
+        }
+      }
+    </div>
+  </div>
+</div>
+
+<div class="column">
+  @if (album.urlVideo) {
+    <a [href]="album.urlVideo" target="_blank" class="video-icon" title="Watch Video"></a>
+  }
+  @if (album.urlWikipedia) {
+    <a [href]="album.urlWikipedia" target="_blank" class="wikipedia-icon" title="Wikipedia Article"></a>
+  }
+</div>
+
+<div class="column">
+  <div class="link-list genre">
+    @for (item of album.genre; track $index) {
+      <app-album-tile-filter-link filter="genre" [value]="item.trim()">{{ item.trim() }}</app-album-tile-filter-link>
+      @if (!$last) {
+        <span class="separator"></span>
+      }
+    }
+    @if (album.genre && album.genre.length === 0) {
+      -
+    }
+  </div>
+  <div class="link-list style">
+    @for (item of album.style; track $index) {
+      <app-album-tile-filter-link filter="style" [value]="item.trim()">{{ item.trim() }}</app-album-tile-filter-link>
+      @if (!$last) {
+        <span class="separator"></span>
+      }
+    }
+    @if (album.style && album.style.length === 0) {
+      -
+    }
+  </div>
+</div>
+
+<div class="column">
+  <div class="link-list country end">
+    @if (album.country) {
+      <app-album-tile-filter-link filter="country" [value]="album.country">
+        {{ album.country }}</app-album-tile-filter-link
+      >
+    } @else {
+      -
+    }
+  </div>
+  <div class="link-list city end">
+    @if (album.city) {
+      <app-album-tile-filter-link filter="city" [value]="album.city">{{ album.city }}</app-album-tile-filter-link>
+    } @else {
+      -
+    }
+  </div>
+</div>
+
+<div class="absolute-icons badges">
+  @if (album.tino) {
+    <div class="badge tino" title="Tino's Tip">T</div>
+  }
+  @if (album.wire) {
+    <div class="badge wire" title="The Wire">W</div>
+  }
+</div>

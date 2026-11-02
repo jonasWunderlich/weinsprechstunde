@@ -1,0 +1,9 @@
+<div class="nav-title">
+  <span class="nav-title-label">{{ label }}</span>
+  @if (filter) {
+    <span class="nav-title-value">{{ filter }}</span>
+    <button type="button" class="reset-filter" (click)="reset()" aria-label="Suchfeld zurücksetzen">
+      <app-icon [cancel]="true">✖</app-icon>
+    </button>
+  }
+</div>

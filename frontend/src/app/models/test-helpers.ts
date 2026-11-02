@@ -60,16 +60,19 @@ export function arbitraryWine(): fc.Arbitrary<Wine> {
 
 export function arbitraryFilter(): fc.Arbitrary<WineFilter> {
   const optStr = fc.option(fc.string({ maxLength: 10 }), { nil: null });
+  const strArr = fc.array(fc.string({ minLength: 1, maxLength: 10 }), { maxLength: 3 });
   return fc.record({
     searchText: fc.string({ maxLength: 8 }),
     dropdowns: fc.record({
       country: optStr,
-      origin: optStr,
       type: optStr,
       producer: optStr,
       quality: optStr,
     }),
-    grape: fc.array(fc.string({ minLength: 1, maxLength: 10 }), { maxLength: 3 }),
+    multiSelects: fc.record({
+      grape: strArr,
+      origin: strArr,
+    }),
     yearFrom: fc.option(fc.integer({ min: 1950, max: 2025 }), { nil: null }),
     yearTo: fc.option(fc.integer({ min: 1950, max: 2025 }), { nil: null }),
     ratingFrom: fc.option(fc.integer({ min: 1, max: 10 }), { nil: null }),
@@ -80,5 +83,9 @@ export function arbitraryFilter(): fc.Arbitrary<WineFilter> {
 }
 
 export function emptyFilter(): WineFilter {
-  return { ...EMPTY_FILTER, dropdowns: { ...EMPTY_FILTER.dropdowns } };
+  return {
+    ...EMPTY_FILTER,
+    dropdowns: { ...EMPTY_FILTER.dropdowns },
+    multiSelects: { grape: [], origin: [] },
+  };
 }

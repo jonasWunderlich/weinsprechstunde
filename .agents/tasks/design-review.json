@@ -1,0 +1,46 @@
+{
+  "verdict": "CHANGES_REQUESTED",
+  "findings": [
+    {
+      "id": 1,
+      "severity": "MEDIUM",
+      "title": "Realitätscheck behauptet `description` als durchgängig gesetzt (faktisch falsch)",
+      "location": "Abschnitt 'Realitätscheck der Datenlage' — Aufzählung 'tasting_date, image, name, description sind praktisch durchgängig gesetzt'",
+      "problem": "description ist real nur in 2/559 Weinen present (gemessen in frontend/src/assets/wines.json), nicht durchgängig wie name (559), tasting_date (557), image (479). Die falsche Prämisse untermauert die Begründung der Dialog-Gruppe 'Verkostung' (tasting_date + description), die faktisch fast immer nur das Datum zeigt.",
+      "fix": "Zeile korrigieren: 'name (559/559), tasting_date (557/559) und image (479/559) sind praktisch durchgängig gesetzt; description dagegen nur ~2/559 — der Verkostungsinhalt liegt fast vollständig in den Extra-Feldern (taste_eye/_nose/_mouth, conclusion_*).'"
+    },
+    {
+      "id": 2,
+      "severity": "MEDIUM",
+      "title": "Dropdown-Match bricht für potentielle Array-Werte (quality) — Options-Quelle und Match-Logik divergieren",
+      "location": "applyFiltersAndSort Dropdown-Zweig 'String(wine[field] ?? '') !== sel' vs. FilterFieldComponent.options = distinctValuesForField(...) und Modell quality?: string | string[]",
+      "problem": "quality ist als string | string[] typisiert; distinctValuesForField rollt Array-Werte über valueList flach aus (Option = Einzelwert), während der Filter-Match den gesamten Feldwert stringifiziert (String(['a','b']) = 'a,b'). Ein Dropdown-Filter auf ein Array-wertiges Feld selektiert nichts. Heute latent (quality real immer String), widerspricht aber der beanspruchten Zukunftssicherheit der generischen Dropdown-Lösung.",
+      "fix": "Match über valueList statt String(...): 'if (sel != null && !valueList(wine, field).includes(sel)) return false;' — symmetrisch zur Options-Erzeugung, deckt string- und array-wertige Dropdown-Felder ab. Alternativ quality im Modell auf string reduzieren (widerspricht aber dem Glossar)."
+    },
+    {
+      "id": 3,
+      "severity": "NIT",
+      "title": "Freitextsuche ist real reine Namenssuche — Produktentscheidung explizit machen",
+      "location": "applyFiltersAndSort Freitextsuche + Entscheidungsabsatz 'Freitextsuche (Req 9.2) — schema-getreu'",
+      "problem": "Korrekt und Req-9.2-konform (nur text-search-Felder = nur name). Der Realdaten-Effekt (faktisch Namenssuche, da producer/grape/origin/year nicht text-search und fast leer) ist aber nicht als bewusste Produktentscheidung festgehalten.",
+      "fix": "Halbsatz ergänzen: 'Folge für die Realdatenlage: Die Freitextsuche ist faktisch eine Namenssuche; eine Erweiterung erfordert Schema- und Req-9.2-Fortschreibung — bewusst außerhalb des Scopes.'"
+    },
+    {
+      "id": 4,
+      "severity": "NIT",
+      "title": "EndlessScroll-Sentinel-Observer: Aufsetzpunkt in zoneless nicht eindeutig",
+      "location": "WineGridComponent / WineListComponent — 'EndlessScroll-Mechanik'",
+      "problem": "Text nennt alternativ afterNextRender/ngAfterViewInit auf viewChild-ElementRef. In zoneless/OnPush mit Signal-viewChild ist afterNextRender idiomatisch; ngAfterViewInit sieht ein Signal-viewChild erst nach dem ersten CD-Durchlauf. Verbindliches Muster fehlt.",
+      "fix": "Ein Muster festschreiben: sentinel = viewChild<ElementRef>('sentinel'); Observer in afterNextRender() aufsetzen (liest this.sentinel()), Cleanup über DestroyRef. ngAfterViewInit-Alternative streichen."
+    },
+    {
+      "id": 5,
+      "severity": "NIT",
+      "title": "WineTile Doppelzweck-Klick (Overlay-Toggle vs. Dialog) auf Mobil unterspezifiziert",
+      "location": "WineTileComponent — Absätze 'Unterscheidung Hover vs. Tap' und 'Doppelzweck-Klick'",
+      "problem": "onTap() (Overlay-Toggle) und onOpen()/onPlay() (Dialog) sind im Code vorhanden, aber welche DOM-Elemente welchen Handler tragen, ist nicht festgelegt. Für Req 11.7/11.8 vs. Req 13.1 ist die Zuordnung der Klickziele entscheidend, sonst öffnet ein Tap gleichzeitig Overlay und Dialog.",
+      "fix": "Template-Vertrag festlegen: Cover-Bereich -> onTap() (Overlay-Toggle); dedizierter Detail-Trigger/Overlay-Fläche und Play-Button -> onOpen()/onPlay(); Desktop: Klick auf Tile -> onOpen(), Hover steuert Overlay."
+    }
+  ],
+  "reviewDoc": "/Users/za_jonas/repos/weinsprechstunde2/.agents/tasks/design-review.md"
+}

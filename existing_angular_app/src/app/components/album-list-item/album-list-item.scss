@@ -1,0 +1,180 @@
+:host {
+  position: relative;
+  display: grid;
+  grid-column: 1 / -1; // Spannt sich über die gesamte Breite des Eltern-Grids
+  grid-template-columns: subgrid;
+  background-color: #f9f9f9;
+  border-radius: 8px;
+  padding: 0 12px 0 0;
+  align-items: end;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+
+  &:hover {
+    transform: scale(1.001);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.7);
+  }
+}
+
+.column {
+  padding: 8px 4px;
+  gap: 8px;
+  display: flex;
+  flex-direction: column;
+}
+
+.row {
+  display: flex;
+  flex-direction: row;
+}
+
+app-album-tile-cover {
+  width: 10rem;
+}
+
+.artist-and-album {
+  position: relative;
+
+  .rating {
+    height: 46px;
+  }
+
+  .external-links {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+  }
+}
+
+.rating-circle {
+  background-color: rgba(0, 0, 0, 0.6);
+  border: 2px solid var(--color-highlight);
+  color: var(--color-highlight);
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: bold;
+  user-select: none;
+}
+
+// icons
+
+@mixin external-link-icon() {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  background-color: var(--text-color-link-external);
+  text-decoration: none;
+  transition:
+    background-color 0.3s,
+    transform 0.3s,
+    filter 0.3s;
+  display: inline-block;
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.8));
+
+  &:hover {
+    background-color: var(--text-color-link-hover);
+    transform: scale(1.15);
+    filter: drop-shadow(0 4px 8px rgba(255, 0, 0, 0.6));
+  }
+}
+
+.video-icon {
+  @include external-link-icon();
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M18 3v2h-2V3H8v2H6V3H4v18h2v-2h2v2h8v-2h2v2h2V3h-2zM8 17H6v-2h2v2zm0-4H6v-2h2v2zm0-4H6V7h2v2zm10 8h-2v-2h2v2zm0-4h-2v-2h2v2zm0-4h-2V7h2v2z'/%3E%3C/svg%3E")
+    no-repeat center / contain;
+}
+
+.wikipedia-icon {
+  @include external-link-icon();
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 34'%3E%3Ctext x='50%25' y='82%25' font-family='Georgia, serif' font-size='28' font-weight='bold' text-anchor='middle'%3EW%3C/text%3E%3C/svg%3E")
+    no-repeat center / contain;
+}
+
+.badges {
+  position: absolute;
+  display: flex;
+  right: 4px;
+  top: 0;
+  .badge {
+    width: 28px;
+    height: 32px;
+    transition: transform 0.3s;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z'/%3E%3C/svg%3E")
+      no-repeat center / contain;
+
+    &:hover {
+      transform: translateY(-2px) scale(1.1);
+    }
+
+    &.tino {
+      background-color: #ecb41a;
+    }
+
+    &.wire {
+      background-color: #ed490e;
+    }
+  }
+}
+
+.link-list {
+  display: flex;
+  flex-wrap: wrap;
+
+  &.end {
+    justify-content: flex-end;
+  }
+}
+
+.album-artist {
+  font-size: 1em;
+}
+
+.album-title {
+  font-weight: bold;
+  font-size: 1.2em;
+  line-break: anywhere;
+
+  a {
+    color: var(--text-color-link-external);
+  }
+}
+
+.inline-icon {
+  font-size: inherit;
+  margin-left: 5px;
+  vertical-align: baseline;
+  cursor: help;
+  display: inline-block;
+}
+
+.publishers-and-year {
+  display: flex;
+}
+
+.country,
+.genre {
+  font-size: 1em;
+}
+
+.city,
+.style {
+  font-size: 0.9em;
+}
+
+.separator::after {
+  color: var(--text-color-muted);
+  content: ',\00a0';
+}
+
+.separator-highlight::after {
+  color: var(--text-color-muted);
+  content: ' / ';
+  white-space: pre;
+  font-size: 0.5em;
+}

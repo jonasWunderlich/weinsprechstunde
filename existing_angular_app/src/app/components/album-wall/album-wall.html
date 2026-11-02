@@ -1,0 +1,49 @@
+<app-nav />
+
+<app-controls-row
+  [showInfos]="showInfos()"
+  (showInfosChange)="showInfos.set(!showInfos())"
+  [showList]="showList()"
+  (showListChange)="showList.set(!showList())"
+/>
+
+<div class="grid-container">
+  @if (showList()) {
+    <div class="album-list">
+      @if (showBackButton()) {
+        <button type="button" class="back-button" (click)="goBack()" aria-label="Go Back">←</button>
+      }
+      @for (album of albums(); track album.urlCover; let i = $index) {
+        <app-album-list-item [album]="album" [lazy]="i > pageSize" />
+      } @empty {
+        @if (!isLoading()) {
+          <div class="no-albums">No albums found for this period.</div>
+        }
+      }
+    </div>
+  } @else {
+    <div class="album-grid">
+      @if (showBackButton()) {
+        <button type="button" class="back-button" (click)="goBack()" aria-label="Go Back">←</button>
+      }
+      @for (album of albums(); track album.urlCover; let i = $index) {
+        <app-album-tile [album]="album" [lazy]="i > pageSize" [showInfos]="showInfos()" />
+      } @empty {
+        @if (!isLoading()) {
+          <div class="no-albums">No albums found for this period.</div>
+        }
+      }
+    </div>
+  }
+
+  <!-- Triggert das Nachladen, wenn es im Viewport sichtbar wird -->
+  <div #scrollAnchor class="scroll-anchor"></div>
+</div>
+
+@if (isLoading()) {
+  <div class="loading-spinner">Loading more albums...</div>
+}
+
+<app-scroll-top-button [showInfos]="showInfos()" (showInfosChange)="showInfos.set(!showInfos())" />
+
+<app-nav />

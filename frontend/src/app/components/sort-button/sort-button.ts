@@ -15,6 +15,8 @@ export class SortButtonComponent {
     { value: 'tasting_date_desc', label: 'Neueste Verkostung zuerst' },
     { value: 'tasting_date_asc', label: 'Älteste Verkostung zuerst' },
     { value: 'rating_desc', label: 'Beste Bewertung zuerst' },
+    { value: 'price_desc', label: 'Teuerste zuerst' },
+    { value: 'price_asc', label: 'Günstigste zuerst' },
   ];
 
   onChange(value: string): void {

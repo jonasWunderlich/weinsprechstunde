@@ -1,34 +1,72 @@
 <div class="filter-field">
-  @switch (field().filter_type) {
+  <div class="ff-head">
+    <label class="ff-label">{{ descriptor().label }}</label>
+    @if (removable()) {
+      <button
+        class="ff-remove"
+        type="button"
+        [attr.aria-label]="'Filter ' + descriptor().label + ' entfernen'"
+        title="Filter entfernen"
+        (click)="onRemove()"
+      >
+        ✕
+      </button>
+    }
+  </div>
+
+  @switch (descriptor().kind) {
     @case ('text-search') {
-      <label class="ff-label">{{ field().field }}</label>
       <input
         class="ff-input"
         type="search"
-        [value]="fs.filter().searchText"
-        placeholder="Suche…"
+        [value]="searchText()"
+        placeholder="Name, Weingut, Rebsorte, Region …"
         (input)="onSearch($any($event.target).value)"
       />
     }
+
     @case ('multi-select') {
-      <label class="ff-label">Rebsorte</label>
-      <div class="ff-chips">
-        @for (opt of options(); track opt) {
-          <label class="ff-chip" [class.selected]="isGrapeSelected(opt)">
-            <input
-              type="checkbox"
-              [checked]="isGrapeSelected(opt)"
-              (change)="toggleGrape(opt, $any($event.target).checked)"
-            />
-            {{ opt }}
-          </label>
-        } @empty {
-          <span class="ff-empty">Keine Werte</span>
+      <div class="ff-multi">
+        <button
+          class="ff-multi-trigger"
+          type="button"
+          [class.has-selection]="selectedMulti().length > 0"
+          [attr.aria-expanded]="multiOpen()"
+          (click)="toggleMultiOpen()"
+        >
+          <span class="ff-multi-summary">{{ multiSummary() }}</span>
+          <span class="ff-multi-caret" aria-hidden="true">▾</span>
+        </button>
+        @if (multiOpen()) {
+          <div class="ff-multi-panel">
+            <div class="ff-multi-options">
+              @for (opt of options(); track opt) {
+                <label class="ff-multi-option" [class.selected]="isMultiSelected(opt)">
+                  <input
+                    type="checkbox"
+                    [checked]="isMultiSelected(opt)"
+                    (change)="toggleMultiValue(opt, $any($event.target).checked)"
+                  />
+                  {{ opt }}
+                </label>
+              } @empty {
+                <span class="ff-empty">Keine Werte</span>
+              }
+            </div>
+            <div class="ff-multi-actions">
+              @if (selectedMulti().length > 0) {
+                <button class="ff-multi-clear" type="button" (click)="clearMulti()">
+                  Zurücksetzen
+                </button>
+              }
+              <button class="ff-multi-done" type="button" (click)="closeMulti()">Fertig</button>
+            </div>
+          </div>
         }
       </div>
     }
+
     @case ('dropdown') {
-      <label class="ff-label">{{ field().field }}</label>
       <select
         class="ff-select"
         [value]="selectedDropdown()"
@@ -40,66 +78,35 @@
         }
       </select>
     }
-    @case ('range') {
-      <label class="ff-label">{{ field().field }}</label>
-      <div class="ff-range">
-        <input
-          class="ff-num"
-          type="number"
-          placeholder="von"
-          [value]="fs.filter().yearFrom"
-          (input)="onYearFrom($any($event.target).value)"
-        />
-        <input
-          class="ff-num"
-          type="number"
-          placeholder="bis"
-          [value]="fs.filter().yearTo"
-          (input)="onYearTo($any($event.target).value)"
-        />
-      </div>
+
+    @case ('rating-bound') {
+      <input
+        class="ff-num"
+        type="number"
+        min="1.0"
+        max="10.0"
+        step="0.1"
+        [value]="ratingValue()"
+        (input)="onRating($any($event.target).value)"
+      />
     }
-    @case ('rating-range') {
-      <label class="ff-label">Bewertung</label>
-      <div class="ff-range">
-        <input
-          class="ff-num"
-          type="number"
-          min="1.0"
-          max="10.0"
-          step="0.1"
-          placeholder="von"
-          [value]="fs.filter().ratingFrom"
-          (input)="onRatingFrom($any($event.target).value)"
-        />
-        <input
-          class="ff-num"
-          type="number"
-          min="1.0"
-          max="10.0"
-          step="0.1"
-          placeholder="bis"
-          [value]="fs.filter().ratingTo"
-          (input)="onRatingTo($any($event.target).value)"
-        />
-      </div>
+
+    @case ('year-bound') {
+      <input
+        class="ff-num"
+        type="number"
+        [value]="yearValue()"
+        (input)="onYear($any($event.target).value)"
+      />
     }
-    @case ('date-range') {
-      <label class="ff-label">Verkostungsdatum</label>
-      <div class="ff-range">
-        <input
-          class="ff-date"
-          type="date"
-          [value]="fs.filter().tastingDateFrom"
-          (input)="onDateFrom($any($event.target).value)"
-        />
-        <input
-          class="ff-date"
-          type="date"
-          [value]="fs.filter().tastingDateTo"
-          (input)="onDateTo($any($event.target).value)"
-        />
-      </div>
+
+    @case ('date-bound') {
+      <input
+        class="ff-date"
+        type="date"
+        [value]="dateValue()"
+        (input)="onDate($any($event.target).value)"
+      />
     }
   }
 </div>
