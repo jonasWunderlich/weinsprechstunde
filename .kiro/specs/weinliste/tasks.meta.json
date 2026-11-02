@@ -1,0 +1,43 @@
+{
+  "pbtResults": {},
+  "executionHistory": {
+    "23.1 ←/→-Navigation am bestehenden AppComponent/WineDetailDialog ergänzen": [
+      {
+        "executionId": "50591da4-5a7b-41f9-9f12-87313ce2d9c6",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793660541354
+      },
+      {
+        "executionId": "50591da4-5a7b-41f9-9f12-87313ce2d9c6",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793660698780
+      }
+    ],
+    "23. Angular Frontend: Pfeiltasten-Navigation im WineDetailDialog (Nachrüstung)": [
+      {
+        "executionId": "50591da4-5a7b-41f9-9f12-87313ce2d9c6",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793660698834
+      }
+    ],
+    "34.1 Escape-Handling am bestehenden AppComponent/WineDetailDialog ergänzen": [
+      {
+        "executionId": "b4e130d5-4cad-4ff2-966c-35d60ae810e4",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793661173322
+      },
+      {
+        "executionId": "b4e130d5-4cad-4ff2-966c-35d60ae810e4",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793661277867
+      }
+    ],
+    "34. Angular Frontend: Esc schließt den WineDetailDialog (Nachrüstung)": [
+      {
+        "executionId": "b4e130d5-4cad-4ff2-966c-35d60ae810e4",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793661277904
+      }
+    ]
+  }
+}

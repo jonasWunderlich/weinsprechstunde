@@ -6,10 +6,10 @@
 
 1. **Python Import-Skript** (`scripts/weinimport.py`) — ein phasenbasiertes CLI, das JSON-Quelldateien aus dem Import-Ordner aufbereitet, eine fertige `wines.json` exportiert, Bilder skaliert und Artefakte optional per FTPES (FTP mit explizitem TLS) auf einen Webserver deployt. Vor der Pipeline kann ein Zwei-Tier-Backup erstellt und bei Bedarf der Import-Ordner per FTPES vom Webserver heruntergeladen werden.
 2. **Angular SPA Frontend** (`frontend/`) — liest die fertig generierte `wines.json` sowie die zentrale `wine-schema.json` und stellt Weine in Kachel- oder Listenansicht mit dynamischer, schema-gesteuerter Filterkonfiguration dar. Die App hat nur eine Route (`/`); sämtliche Filter liegen im FilterService.
-3. **Wine Editor Web-App** (`editor/`) — eine passwortgeschützte FastAPI-Anwendung mit Vanilla-HTML/JS-Frontend zur komfortablen Pflege der JSON-Quelldateien im Import-Ordner. Nutzt ebenfalls `wine-schema.json` für dynamische Formularfelder.
+3. **Wine Editor Web-App** (WineEditorApp) — eine **reine Angular-Browser-App ohne eigenes Backend** zur komfortablen Pflege der JSON-Quelldateien im `import_dir`. Sie ist eine **zweite Angular-App im selben Workspace** (`frontend/projects/editor`) und teilt Filter-, Such-, Sortier- und WineSchema-Verarbeitungslogik über einen gemeinsam genutzten Angular-Library-/Shared-Code-Bereich (`@weinsprechstunde/shared`) mit der öffentlichen Weinliste. Es gibt **kein FastAPI-Backend, keinen lokalen Server, kein `localhost`, kein Startskript und keine `/api/*`-Endpunkte**. Die Editor-App wird — wie die öffentliche Weinliste — als **statische App** auf den Webserver deployt und über eine **eigene URL** geöffnet (eigener Editor-Pfad im `wine_app`-Bereich); die ausgelieferte App enthält **keine Weindaten**, sondern nur die App-Hülle (UI) (Requirement 16.3). Der Dateizugriff erfolgt **direkt im Browser über die File System Access API**: Der Benutzer gibt **einmalig** den Cloud-Ordner (= `import_dir`) frei, das Ordner-Handle wird im Browser (IndexedDB) persistiert, und bei erneutem Öffnen genügt eine kurze Re-Autorisierung. Die App liest, schreibt, verschiebt und legt JSON-, Bild- und Mediendateien direkt in diesem Ordner an. Sie läuft **ausschließlich in Chromium-basierten Browsern (Chrome/Edge)** und zeigt bei fehlender File System Access API einen verständlichen Hinweis (Req 17.4). Es gibt **keine Authentifizierung** (kein Passwort, kein Session-Cookie, kein Rate-Limiting) — der Schutz ergibt sich allein aus der vom Benutzer im Browser erteilten Ordner-Freigabe; ein Ausbruch über den freigegebenen Ordner hinaus ist durch die Browser-API technisch ausgeschlossen (Requirement 16). Thumbnails/Bildvorschauen werden **clientseitig im Browser** (Canvas / `createImageBitmap`) aus den über die File System Access API gelesenen Originalbildern erzeugt; die Originale bleiben unverändert. Der Editor bietet bewusst **keine Lösch-Funktion** — ungewollte Einträge und Bilder werden ausschließlich archiviert (nach `import_dir/_archive/` verschoben); das endgültige Löschen bleibt dem Dateisystem vorbehalten. Die Cloud-Synchronisation des freigegebenen Ordners verteilt die bearbeiteten Dateien zwischen den Beteiligten; die App löst keine Sync-Konflikte. Nutzt ebenfalls `wine-schema.json` für dynamische Formularfelder.
 
 Die drei Subsysteme teilen sich zwei zentrale Konfigurationsdateien im Projekt-Root:
-- `weinsprechstunde.config.json` — Laufzeitparameter (Pfade, Deploy, Backup, Editor)
+- `weinsprechstunde.config.json` — Laufzeitparameter (Pfade, Deploy, Backup); kein Editor-Objekt mehr (die Browser-App braucht weder `editor.path` noch `editor.password_hash`)
 - `wine-schema.json` — Felddefinitionen aller bekannten Weinattribute (Typ, Filter-Typ, Sichtbarkeit)
 
 Laufzeitabhängigkeiten zwischen den Subsystemen existieren nicht.
@@ -28,23 +28,59 @@ weinsprechstunde2/
 │       └── deploy.yml               ← GitHub Actions CI/CD
 ├── scripts/
 │   ├── weinimport.py                ← Python CLI (backup/prepare/export/image-export/deploy)
-│   ├── hash_password.py             ← Hilfsskript: Passwort hashen
 │   └── requirements.txt
 ├── import/                          ← Quelldaten (JSON + Bilder + Audio + Video)
+│                                      = Cloud-Ordner; vom Benutzer im Browser per
+│                                        File System Access API freigegeben (siehe unten)
 ├── backup/                          ← lokale wines.json-Backups (last_*.json + archival_*.json + .last_archival)
 ├── export/
 │   └── images/                      ← skalierte Exportbilder (generiert)
-├── frontend/                        ← Angular SPA
-│   ├── src/
-│   │   └── app/                     ← Komponenten/Services (lädt data/ zur Laufzeit)
-│   ├── public/
-│   │   ├── data/  → ../../export/data    ← wines.json + wine-schema.json (Symlink, lokal)
-│   │   └── images/ → ../../export/images ← skalierte Bilder (Symlink, lokal)
-│   └── package.json
-└── editor/                          ← Wine Editor
-    ├── main.py                      ← FastAPI Backend
-    └── static/                      ← HTML/JS/CSS Frontend
+├── frontend/                        ← Angular-Workspace (eine angular.json, ein package.json)
+│   ├── angular.json                 ← definiert die Projekte: weinliste, editor, shared
+│   ├── package.json
+│   ├── projects/
+│   │   ├── shared/                  ← geteilte Angular-Library (@weinsprechstunde/shared)
+│   │   │   └── src/lib/             ← FilterService, Wine-Models, WineSchema-Verarbeitung,
+│   │   │                              ControlsRow-/Filter-Logik (von beiden Apps genutzt)
+│   │   ├── weinliste/               ← öffentliche Weinliste (bisherige SPA)
+│   │   │   ├── src/app/             ← Komponenten (lädt data/ zur Laufzeit)
+│   │   │   └── public/
+│   │   │       ├── data/  → ../../../../export/data    ← wines.json + wine-schema.json (Symlink)
+│   │   │       └── images/ → ../../../../export/images ← skalierte Bilder (Symlink)
+│   │   └── editor/                  ← Editor-Angular-App (WineEditorApp, reine Browser-App)
+│   │       └── src/app/             ← Zwei-Spalten-Layout, WineEditor,
+│   │                                  ImagePicker + Audio-/Video-Picker (kein Login);
+│   │                                  nutzt @weinsprechstunde/shared und greift über die
+│   │                                  File System Access API (FileSystemAccessService)
+│   │                                  direkt auf den freigegebenen import_dir zu —
+│   │                                  kein Backend, keine Netzwerkanfragen für Daten
+│   ├── (public app: ng build weinliste → frontend/dist/weinliste/browser/)
+│   └── (editor app: ng build editor   → frontend/dist/editor/browser/ — statische App,
+│                                         wird wie die Weinliste deployt, eigene URL)
 ```
+
+**Begründung der Struktur:** Ein einziger Angular-Workspace (`frontend/`) mit drei
+Projekten (`weinliste`-App, `editor`-App und einer `shared`-Library) hält genau *eine*
+Toolchain, *ein* `package.json` und *eine* `angular.json` vor. Die gemeinsame Logik
+(FilterService, Wine-Models, WineSchema-Verarbeitung, ControlsRow-/Filter-Logik) lebt
+in der `shared`-Library und wird von beiden Apps über den TypeScript-Pfad-Alias
+`@weinsprechstunde/shared` importiert — dadurch wird nichts dupliziert. Die bestehende
+öffentliche App wird dabei nicht gebrochen: Ihr bisheriger Code wandert nach
+`projects/weinliste/`, die geteilten Teile werden in `projects/shared/` extrahiert, und
+ihre Funktion bleibt unverändert (gleiche Komponenten, gleicher Build-Output
+`frontend/dist/weinliste/browser/`, den die PhaseDeploy weiterhin auflöst).
+
+**Build und Deployment der Editor-App:** `ng build editor` erzeugt — genau wie
+`ng build weinliste` — rein **statische Angular-Artefakte** (`frontend/dist/editor/browser/`).
+Diese werden zusammen mit der öffentlichen Weinliste auf den Webserver deployt und über
+eine **eigene URL** (eigener Editor-Pfad im `wine_app`-Bereich) geöffnet. Es gibt **kein
+Backend, keinen lokalen Server, kein `localhost` und kein Startskript**. Die ausgelieferte
+App enthält **keine Weindaten** — nur die App-Hülle (Req 16.3). Zur Laufzeit gibt der
+Benutzer im Browser **einmalig** den lokalen (cloud-synchronisierten) Cloud-Ordner
+(= `import_dir`) über die File System Access API frei; das Ordner-Handle wird in IndexedDB
+persistiert, und bei erneutem Öffnen genügt eine kurze Re-Autorisierung (Req 17.2/17.3).
+Die Verteilung der bearbeiteten JSON-/Medien-Dateien zwischen den Beteiligten übernimmt
+allein die Cloud-Synchronisation des Ordners; die App löst keine Sync-Konflikte (Req 17.5).
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -63,25 +99,40 @@ weinsprechstunde2/
 └──────────────────────────────────────────────────────────────────────┘
 
 ┌──────────────────────────────────────────────────────────────────────┐
-│  Browser: Angular SPA                                                │
+│  Geteilte Angular-Library  (projects/shared, @weinsprechstunde/shared)│
 │                                                                      │
-│  AppComponent (Router Outlet, globale Tastaturkürzel i/l)           │
-│  ├── NavComponent (Logo-Platzhalter + App-Name, Logo-Klick = Reset) │
-│  └── WineWallComponent (Route: /)                                   │
-│      ├── ControlsRowComponent (Filter via WineSchema, Toggles)      │
-│      ├── WineGridComponent  (Kacheln, alle gefilterten Weine)       │
-│      └── WineListComponent  (Liste,  alle gefilterten Weine)        │
-│  WineDetailDialogComponent (modal, global in AppComponent)          │
-│                                                                      │
-│  Services: WineDataService · FilterService · UserPreferencesService  │
-└──────────────────────────────────────────────────────────────────────┘
-
+│  FilterService · Wine-Models · WineSchema-Verarbeitung ·            │
+│  ControlsRow-/Filter-Logik   — von BEIDEN Apps importiert            │
+└───────────────┬───────────────────────────────┬──────────────────────┘
+                │ import                          │ import
+                ▼                                 ▼
+┌──────────────────────────────────┐  ┌──────────────────────────────────┐
+│  Browser: öffentliche Weinliste  │  │  Chromium-Browser: Wine-Editor   │
+│  (projects/weinliste)            │  │  (projects/editor, kein Login,   │
+│                                  │  │   statische App von eigener URL) │
+│  AppComponent (i/l-Kürzel)       │  │  WineEditorApp                   │
+│  ├── NavComponent                │  │  ├── Ordner-Freigabe (FSA API)   │
+│  └── WineWallComponent (Route /) │  │  ├── Aktualisieren-Button        │
+│      ├── ControlsRowComponent    │  │  ├── links: Eintragsliste        │
+│      ├── WineGridComponent       │  │  │    (ControlsRow + Eintrags-   │
+│      └── WineListComponent       │  │  │     typ-Filter via shared     │
+│  WineDetailDialogComponent       │  │  │     FilterService)            │
+│                                  │  │  └── rechts: WineEditor          │
+│                                  │  │       + ImagePicker + A/V-Picker │
+│                                  │  │  FileSystemAccessService         │
+│  lädt data/ zur Laufzeit (HTTP)  │  │  (clientseitige Thumbnails)      │
+└──────────────────────────────────┘  └───────────────┬──────────────────┘
+                                                       │ File System Access API
+                                                       │ (direkt, kein Backend)
+                                                       ▼
 ┌──────────────────────────────────────────────────────────────────────┐
-│  Browser: Wine Editor (FastAPI + Vanilla JS)                         │
-│                                                                      │
-│  editor/static/index.html  ←──►  FastAPI /api/*                     │
-│  editor/static/edit.html         liest/schreibt import/             │
-│  (Formularfelder dynamisch aus wine-schema.json)                     │
+│  import_dir  =  lokaler Cloud-Ordner (JSON + Medien)                  │
+│  — vom Benutzer im Browser per File System Access API freigegeben,    │
+│    Ordner-Handle in IndexedDB persistiert (Re-Autorisierung beim      │
+│    erneuten Öffnen); Zugriff technisch auf diesen Ordner beschränkt — │
+│  Lesen/Schreiben/Anlegen/Verschieben · _archive/ wird ignoriert       │
+│  ⇄ Cloud-Sync (Dropbox/OneDrive/iCloud) verteilt die Dateien          │
+│     zwischen allen Beteiligten (keine Konfliktauflösung durch die App) │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -93,12 +144,16 @@ graph TD
     A -->|Phase prepare| B[aufbereitete JSON-Dateien]
     B -->|Phase export| C[export/data/wines.json]
     B -->|Phase image-export| D[export/images/]
-    C -->|HTTP GET /data/wines.json| E[Angular SPA]
+    C -->|HTTP GET /data/wines.json| E[Weinliste-App (Angular)]
     F[wine-schema.json] -->|HTTP GET /data/wine-schema.json| E
     D -->|Phase deploy FTPES| G[Webserver /wine_app]
     C -->|Phase deploy FTPES| G
-    H[editor/static] -->|FastAPI /api/*| I[import/*.json]
-    F -->|HTTP GET /api/schema| J[Wine Editor Frontend]
+    EB[editor static build<br/>frontend/dist/editor] -->|Phase deploy FTPES| G
+    S[shared Angular-Library<br/>FilterService · Wine-Models · WineSchema] -->|import| E
+    S -->|import| J[Wine-Editor-App Angular<br/>Chromium-Browser, kein Login, kein Backend]
+    J -->|File System Access API<br/>Lesen/Schreiben/Anlegen/Verschieben| I[import_dir = Cloud-Ordner<br/>*.json + Medien]
+    J -.ignoriert.-> AR[import/_archive/]
+    I -.Cloud-Sync verteilt Dateien.-> I
 ```
 
 ---
@@ -128,13 +183,15 @@ graph TD
     "max_last_backups": 10,
     "max_archival_backups": 24,
     "archival_interval_days": 30
-  },
-  "editor": {
-    "path": "/editor-geheim",
-    "password_hash": "$2b$12$..."
   }
 }
 ```
+
+> **Kein `editor`-Objekt mehr:** Die früheren Felder `editor.path` und
+> `editor.password_hash` **entfallen** (Requirement 16.4). Die WineEditorApp ist eine
+> reine Browser-App ohne Backend und benötigt weder einen geheimen URL-Pfad noch ein
+> Passwort; der Schutz ergibt sich allein aus der im Browser erteilten Freigabe des
+> Cloud-Ordners über die File System Access API.
 
 > `host`, `user` und `password` stehen **nicht** in der ConfigFile. Sie werden
 > zur Laufzeit aufgelöst: ConfigFile > unversionierte
@@ -220,9 +277,21 @@ def get_scaffold_fields(schema: list[SchemaField]) -> list[str]:
 #### Hilfsfunktionen
 
 ```python
+ARCHIVE_DIR_NAME = "_archive"
+
 def collect_json_files(import_dir: str) -> list[Path]:
-    """Rekursiv alle .json-Dateien in import_dir erfassen."""
-    return sorted(Path(import_dir).rglob("*.json"))
+    """Rekursiv alle .json-Dateien in import_dir erfassen.
+
+    Der Archiv-Ordner import_dir/_archive/ wird vollständig übersprungen
+    (Req 17.51): Dateien darin fließen weder in prepare/export noch in den
+    Bildexport ein. Da collect_json_files die zentrale Dateierfassung aller
+    drei Phasen (prepare, export, image-export) ist, genügt diese eine Stelle.
+    """
+    root = Path(import_dir)
+    return sorted(
+        p for p in root.rglob("*.json")
+        if ARCHIVE_DIR_NAME not in p.relative_to(root).parts
+    )
 
 def slugify_name(name: str) -> str:
     """Name → URL-freundlicher Slug (python-slugify)."""
@@ -783,8 +852,12 @@ jobs:
 | `python-slugify` | Slug-Generierung für Dateinamen |
 | `dataclasses` (stdlib) | Datenmodelle |
 | `argparse` (stdlib) | CLI-Einstiegspunkt |
-| `bcrypt` | Passwort-Hashing für Wine Editor |
-| `itsdangerous` | Session-Cookie-Signing für Wine Editor |
+
+> Für die WineEditorApp werden **keine** Python-Bibliotheken benötigt: Sie ist eine
+> reine Angular-Browser-App ohne Backend (kein `fastapi`, kein `uvicorn`, keine
+> Auth-Bibliotheken wie `bcrypt`/`itsdangerous`). Dateizugriff und Thumbnails laufen
+> clientseitig über die File System Access API im Browser (Requirement 16/17); diese
+> `requirements.txt` enthält ausschließlich die Abhängigkeiten des Import-Skripts.
 
 ---
 
@@ -1258,20 +1331,58 @@ export class AppComponent implements OnInit {
 
 Die AppComponent registriert einen globalen `(document:keydown)`-Listener:
 `i` schaltet `infoToggleActive` um (wie InfoToggle), `l` wechselt via `setViewMode`
-zwischen Grid und Liste (wie ListToggle). Die Shortcuts feuern nicht, wenn
-(a) der Fokus in einem Eingabefeld liegt (`INPUT`/`TEXTAREA`/`SELECT`/`contenteditable`),
-(b) der WineDetailDialog offen ist (`dialog.wine() !== null`), oder
-(c) eine Modifier-Taste (Ctrl/Meta/Alt) gedrückt ist. Die zugehörigen Buttons tragen
-einen `title`-Hinweis („Tastenkürzel: i" bzw. „Tastenkürzel: l").
+zwischen Grid und Liste (wie ListToggle), `→` navigiert im WineDetailDialog zum nächsten
+und `←` zum vorherigen Wein. Gemeinsame Guards für alle vier Shortcuts (`i`, `l`, `←`, `→`):
+Sie feuern nicht, wenn
+(a) der Fokus in einem Eingabefeld liegt (`INPUT`/`TEXTAREA`/`SELECT`/`contenteditable`), oder
+(b) eine Modifier-Taste (Ctrl/Meta/Alt) gedrückt ist.
+
+Zusätzlicher Dialog-Guard **nur für `i` und `l`**: Diese beiden Shortcuts feuern nicht,
+solange der WineDetailDialog offen ist (`dialog.wine() !== null`). Die Pfeiltasten
+`←`/`→` sind bei geöffnetem Dialog hingegen **gerade aktiv** — sie dienen dort der
+Navigation zwischen den Weinen. Die zugehörigen Buttons für `i` und `l` tragen einen
+`title`-Hinweis („Tastenkürzel: i" bzw. „Tastenkürzel: l").
+
+**Navigationslogik der Pfeiltasten (kein eigener Zustand).** Index-Quelle ist
+ausschließlich die über den FilterService gefilterte und sortierte Liste
+`filterService.filteredWines()` — exakt dieselbe Reihenfolge, die WineGrid und WineList
+rendern. Sei `list = filterService.filteredWines()` und `n = list.length`
+(bei `n === 0` tun die Pfeiltasten nichts):
+
+- **Dialog offen** (`dialog.wine() !== null`): Der aktuell gezeigte Wein wird über seine
+  Position `i` in `list` bestimmt (Index des aktuellen `dialog.wine()` in `list`).
+  `→` zeigt `list[(i + 1) % n]`, `←` zeigt `list[(i - 1 + n) % n]`. Durch den
+  Modulo-Wrap folgt nach dem letzten Wein wieder der erste und vor dem ersten der letzte.
+  Wird der aktuelle Wein in `list` nicht gefunden (`i === -1`, z. B. durch zwischenzeitlich
+  geänderte Filter), verhält sich `→` wie „Dialog geschlossen, erster Wein" und `←` wie
+  „Dialog geschlossen, letzter Wein".
+- **Dialog geschlossen** (`dialog.wine() === null`): `→` öffnet den WineDetailDialog mit
+  dem ersten Wein `list[0]`, `←` mit dem letzten Wein `list[n - 1]`.
 
 ```typescript
 host: { '(document:keydown)': 'onKeydown($event)' }
 
 onKeydown(event: KeyboardEvent): void {
+  // Gemeinsame Guards für i, l, ArrowLeft, ArrowRight
   if (event.defaultPrevented) return;
   if (event.ctrlKey || event.metaKey || event.altKey) return;
-  if (this.dialog.wine() !== null) return;
   if (this.isEditableTarget(event.target)) return;
+
+  const dialogOpen = this.dialog.wine() !== null;
+
+  switch (event.key) {
+    case 'ArrowRight':
+      this.navigateDialog(+1);
+      event.preventDefault();
+      return;
+    case 'ArrowLeft':
+      this.navigateDialog(-1);
+      event.preventDefault();
+      return;
+  }
+
+  // i und l bleiben bei offenem Dialog deaktiviert (nur die Pfeiltasten navigieren dann)
+  if (dialogOpen) return;
 
   switch (event.key.toLowerCase()) {
     case 'i':
@@ -1285,6 +1396,35 @@ onKeydown(event: KeyboardEvent): void {
   }
 }
 
+/**
+ * Navigiert im WineDetailDialog relativ zum aktuell gezeigten Wein.
+ * Index-Quelle ist die gefilterte/sortierte Liste des FilterService
+ * (gleiche Reihenfolge wie WineGrid/WineList) — kein eigener Zustand.
+ * `dir` ist +1 (ArrowRight) oder -1 (ArrowLeft).
+ */
+private navigateDialog(dir: 1 | -1): void {
+  const list = this.filterService.filteredWines();
+  const n = list.length;
+  if (n === 0) return;
+
+  const current = this.dialog.wine();
+  if (current === null) {
+    // Dialog geschlossen: ArrowRight → erster Wein, ArrowLeft → letzter Wein
+    this.dialog.open(dir === 1 ? list[0] : list[n - 1]);
+    return;
+  }
+
+  const i = list.indexOf(current);
+  if (i === -1) {
+    // Aktueller Wein nicht in gefilterter Liste: wie geschlossener Dialog behandeln
+    this.dialog.open(dir === 1 ? list[0] : list[n - 1]);
+    return;
+  }
+
+  // Modulo-Wrap: nach dem letzten folgt der erste, vor dem ersten der letzte
+  this.dialog.open(list[(i + dir + n) % n]);
+}
+
 private isEditableTarget(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
   if (!el) return false;
@@ -1295,164 +1435,413 @@ private isEditableTarget(target: EventTarget | null): boolean {
 
 ---
 
-### 3. Wine Editor Web-App (`editor/`)
+### 3. Wine Editor Web-App (WineEditorApp)
 
-**Technologie:** Python FastAPI Backend + Vanilla HTML/JS Frontend
+**Technologie:** Reine Angular-Browser-App ohne Backend — eine eigenständige
+Angular-App unter `frontend/projects/editor`, die Code mit der öffentlichen Weinliste
+über die geteilte Library `@weinsprechstunde/shared` teilt. `ng build editor` erzeugt
+**statische Angular-Artefakte** (`frontend/dist/editor/browser/`), die — wie die
+öffentliche Weinliste — auf den Webserver deployt und über eine **eigene URL** geöffnet
+werden (Req 17.1). Es gibt **kein FastAPI-Backend, keinen lokalen Server, kein `localhost`,
+kein Startskript und keine `/api/*`-Endpunkte**. Die App enthält **keine Weindaten** — nur
+die App-Hülle (Req 16.3). Sie läuft **ausschließlich in Chromium-basierten Browsern
+(Chrome/Edge)** und zeigt bei fehlender File System Access API einen verständlichen
+Hinweis (Req 17.4). Es gibt keinen Login-Screen und keine Authentifizierung (Req 16.1).
 
-#### Sicherheitskonzept
+Der gesamte Datenzugriff läuft **clientseitig im Browser über die File System Access API**:
+Ein Angular-Service (`FileSystemAccessService`) kapselt Verzeichnis-Handles, das Lesen,
+Schreiben, Anlegen und Verschieben von Dateien sowie die clientseitige Thumbnail-Erzeugung.
+Der Benutzer gibt **einmalig** den Cloud-Ordner (= `import_dir`) frei; das Ordner-Handle
+wird in IndexedDB persistiert, bei erneutem Öffnen genügt eine kurze Re-Autorisierung
+(Req 17.2/17.3). Es gibt keine serverseitige Logik: Wine-Listing, Anlegen, Verknüpfen,
+Medien-Listing, Thumbnails und Archivierung werden allein über die File System Access API
+im `import_dir` ausgeführt. Der Schutz ergibt sich aus der im Browser erteilten
+Ordner-Freigabe; ein Ausbruch über diesen Ordner hinaus ist durch die Browser-API
+technisch ausgeschlossen (Requirement 16).
+
+Der Editor stellt bewusst **keine Funktion zum Löschen** von Weineinträgen oder
+Dateien bereit (Req 17.44): Als entfernende Aktion existiert ausschließlich das
+**Archivieren** (Verschieben nach `import_dir/_archive/`). Das endgültige Löschen
+sowie das Zurückholen (Dearchivieren) erfolgen ausschließlich manuell im
+Dateisystem (Req 17.50).
+
+#### Sicherheitskonzept (reine Browser-App, keine Auth)
 
 ```
-editor/
-├── main.py          ← FastAPI-App (Rate-Limiter, Auth, CRUD)
-└── static/
-    ├── index.html   ← Login + Weinliste
-    ├── edit.html    ← WineEditor-Formular
-    ├── app.js
-    └── style.css
+Webserver (eigene Editor-URL)          Browser (Chrome/Edge)
+┌───────────────────────────┐          ┌──────────────────────────────────┐
+│  statische Editor-App      │  laden   │  WineEditorApp (Angular)         │
+│  (frontend/dist/editor)    │ ───────► │  — keine Weindaten, nur UI —     │
+│  — keine Weindaten —       │          │  FileSystemAccessService         │
+└───────────────────────────┘          └───────────────┬──────────────────┘
+                                                        │ File System Access API
+                                                        │ (einmalige Freigabe,
+                                                        │  Handle in IndexedDB)
+                                                        ▼
+                                        ┌──────────────────────────────────┐
+                                        │  import_dir = lokaler Cloud-Ordner│
+                                        │  JSON + Medien (⇄ Cloud-Sync)     │
+                                        └──────────────────────────────────┘
+
+frontend/projects/editor/   ← Editor-Angular-App (Entwicklungsquelle); `ng build editor`
+                              erzeugt die statische App, die deployt wird
 ```
 
-**Passwort-Hashing (`scripts/hash_password.py`):**
+Das Sicherheitskonzept der WineEditorApp beruht nicht auf Authentifizierung, sondern auf
+der im Browser erteilten Ordner-Freigabe (Requirement 16):
 
-```python
-import bcrypt, json
+- **Keine Authentifizierung (Req 16.1):** Die App ist eine reine Browser-App ohne Server
+  und ohne Backend. Es gibt kein Passwort, kein Session-Cookie und kein Rate-Limiting; der
+  Zugang wird allein über die vom Benutzer im Browser erteilte Freigabe des Cloud-Ordners
+  kontrolliert.
+- **Zugriff bleibt auf den freigegebenen Ordner beschränkt (Req 16.2):** Alle datei- und
+  bildbezogenen Zugriffe laufen ausschließlich über die vom Benutzer erteilte
+  Ordner-Freigabe (File System Access API). Die App kann nur auf den freigegebenen
+  Cloud-Ordner (= `import_dir`) und dessen Inhalt zugreifen; ein Ausbruch über diesen
+  Ordner hinaus ist durch die Browser-API technisch ausgeschlossen — es ist keine
+  anwendungsseitige Pfadprüfung nötig, da die Browser-API die Grenze garantiert.
+- **Keine Weindaten in der App (Req 16.3):** Die deployte statische App enthält keine
+  Weindaten; sie liest und schreibt Weindaten ausschließlich im lokal freigegebenen
+  Cloud-Ordner.
 
-def hash_and_save(password: str, config_path: str = "weinsprechstunde.config.json") -> None:
-    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=12)).decode()
-    with open(config_path) as f:
-        config = json.load(f)
-    config.setdefault("editor", {})["password_hash"] = hashed
-    with open(config_path, "w") as f:
-        json.dump(config, f, indent=2, ensure_ascii=False)
-    print(f"Passwort-Hash gespeichert in {config_path}")
+**Ordner-Freigabe & Handle-Persistenz (`FileSystemAccessService`, Req 17.2/17.3/17.4):**
+Beim ersten Start fordert die App den Benutzer auf, den Cloud-Ordner (= `import_dir`) über
+`window.showDirectoryPicker()` freizugeben, und persistiert das erhaltene
+`FileSystemDirectoryHandle` in IndexedDB. Bei erneutem Öffnen wird das Handle aus IndexedDB
+geladen und über `handle.queryPermission()` / `handle.requestPermission()` kurz
+re-autorisiert, ohne dass der Benutzer den Ordner erneut suchen muss. Ist die File System
+Access API nicht verfügbar (nicht-Chromium-Browser), zeigt die App einen verständlichen
+Hinweis statt der Editor-Oberfläche (Req 17.4).
 
-if __name__ == "__main__":
-    import getpass
-    pw = getpass.getpass("Neues Passwort: ")
-    hash_and_save(pw)
+```typescript
+// FileSystemAccessService (vereinfacht)
+async requestFolder(): Promise<FileSystemDirectoryHandle> {
+  if (!('showDirectoryPicker' in window)) {
+    throw new UnsupportedBrowserError();   // → verständlicher Hinweis (Req 17.4)
+  }
+  const handle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
+  await this.persistHandle(handle);        // Handle in IndexedDB speichern (Req 17.2)
+  return handle;
+}
+
+async restoreFolder(): Promise<FileSystemDirectoryHandle | null> {
+  const handle = await this.loadHandle();  // aus IndexedDB (Req 17.3)
+  if (!handle) return null;
+  let perm = await handle.queryPermission({ mode: 'readwrite' });
+  if (perm !== 'granted') {
+    perm = await handle.requestPermission({ mode: 'readwrite' });   // Re-Autorisierung
+  }
+  return perm === 'granted' ? handle : null;
+}
 ```
 
-**Rate-Limiter (in-memory, ausreichend für wenige Nutzer):**
+**Clientseitige Datenzugriffs-Schicht (`FileSystemAccessService`):**
 
-```python
-from collections import defaultdict
-from datetime import datetime, timedelta
+Es gibt **keine** Endpunkte und **keine** Netzwerkanfragen für Daten. Stattdessen kapselt
+der `FileSystemAccessService` alle Dateioperationen über die File System Access API
+(Verzeichnis-Handles, Datei-Lesen/-Schreiben, Anlegen, Verschieben, clientseitige
+Thumbnails). Die früheren Backend-Operationen bilden sich wie folgt auf
+File-System-Access-Operationen im `import_dir` ab:
 
-_failed_attempts: dict[str, list[datetime]] = defaultdict(list)
-WINDOW        = timedelta(minutes=10)
-MAX_ATTEMPTS  = 5
-
-def check_rate_limit(ip: str) -> bool:
-    """True wenn IP gesperrt ist."""
-    now = datetime.now()
-    _failed_attempts[ip] = [t for t in _failed_attempts[ip] if now - t < WINDOW]
-    return len(_failed_attempts[ip]) >= MAX_ATTEMPTS
-
-def record_failed_attempt(ip: str) -> None:
-    _failed_attempts[ip].append(datetime.now())
-```
-
-**Session-Management (itsdangerous + bcrypt):**
-
-```python
-import bcrypt, time
-from itsdangerous import URLSafeSerializer
-
-serializer = URLSafeSerializer(secret_key)
-SESSION_MAX_AGE = 30 * 24 * 60 * 60   # 30 Tage
-
-@app.post("/api/auth/login")
-async def login(body: LoginRequest, request: Request, response: Response):
-    ip = request.client.host
-    if check_rate_limit(ip):
-        raise HTTPException(401, "Login fehlgeschlagen.")  # kein Hinweis auf Sperrung
-
-    stored_hash = config.editor.password_hash.encode()
-    if not bcrypt.checkpw(body.password.encode(), stored_hash):
-        record_failed_attempt(ip)
-        raise HTTPException(401, "Login fehlgeschlagen.")
-
-    token = serializer.dumps({"authenticated": True, "ts": time.time()})
-    response.set_cookie(
-        "session", token,
-        httponly=True,
-        secure=True,
-        samesite="strict",
-        max_age=SESSION_MAX_AGE
-    )
-    return {"ok": True}
-
-def require_auth(request: Request):
-    token = request.cookies.get("session")
-    try:
-        data = serializer.loads(token)
-        if not data.get("authenticated"):
-            raise ValueError
-        if time.time() - data["ts"] > SESSION_MAX_AGE:
-            raise ValueError
-    except Exception:
-        raise HTTPException(401, "Nicht angemeldet.")
-    return data
-```
-
-**FastAPI-Endpunkte (`editor/main.py`):**
-
-| Methode | Pfad | Beschreibung |
-|---|---|---|
-| `POST` | `/api/auth/login` | Passwort (bcrypt) prüfen, Session-Cookie setzen |
-| `GET` | `/api/wines` | Alle JSON-Dateien aus import_dir |
-| `GET` | `/api/wines/{id}` | Einzelnen Wein lesen, ETag im Response-Header |
-| `PUT` | `/api/wines/{id}` | Weineintrag speichern (erwartet `If-Match` ETag) |
-| `POST` | `/api/wines` | Neuen Weineintrag anlegen |
-| `DELETE` | `/api/wines/{id}` | Weineintrag löschen |
-| `GET` | `/api/images` | Alle Bilddateien aus import_dir |
-| `GET` | `/api/images/unassigned` | Bilder ohne JSON-Referenz |
-| `GET` | `/api/autocomplete/{field}` | Bestehende Werte eines Feldes |
-| `GET` | `/api/schema` | Liefert wine-schema.json aus |
-
-**Optimistic Locking (ETag-basiert):**
-
-```python
-@app.get("/api/wines/{id}")
-async def get_wine(id: str, session=Depends(require_auth)):
-    path = get_json_path(id)
-    data = json.loads(path.read_text())
-    etag = str(int(path.stat().st_mtime * 1000))
-    return JSONResponse(content=data, headers={"ETag": etag})
-
-@app.put("/api/wines/{id}")
-async def put_wine(id: str, body: dict, if_match: str = Header(None),
-                   session=Depends(require_auth)):
-    path = get_json_path(id)
-    current_etag = str(int(path.stat().st_mtime * 1000))
-    if if_match != current_etag:
-        raise HTTPException(409, "Conflict: Datei wurde zwischenzeitlich verändert.")
-    path.write_text(json.dumps(body, indent=2, ensure_ascii=False))
-    new_etag = str(int(path.stat().st_mtime * 1000))
-    return JSONResponse(content={"ok": True}, headers={"ETag": new_etag})
-```
-
-**WineEditor-Formular** — Eingabefelder dynamisch aus `wine-schema.json`:
-
-| WineSchema `type` | Input-Typ |
+| Operation | File-System-Access-Umsetzung |
 |---|---|
-| `text` (name) | `text` (required) |
-| `number` (year) | `number` (min=1900, max=2100) |
-| `date` (tasting_date) | `date` |
-| `text` (country, grape, producer, type, origin, quality) | `text` + `<datalist>` (Autocomplete) |
-| `text` (price) | `text` |
-| `rating` (rating) | `number` (min=1, max=10, step=0.1) |
-| `text` (description) | `textarea` |
-| `text` (image) | ImagePicker (custom modal) |
-| `text` (audio) | `text` |
-| `text` (video) | `text` |
+| Wine-Listing | Verzeichnis rekursiv scannen (`handle.entries()`), alle `.json` außerhalb `_archive` lesen; Konflikterkennung ausschließlich über `File.lastModified` |
+| Einzelnen Wein lesen | JSON-Datei lesen und `File.lastModified` als Lade-Zeitstempel merken (für die Konflikterkennung beim Speichern, Req 17.25) |
+| Wein speichern / Auto-Save | Vor dem Schreiben `File.lastModified` erneut lesen und mit dem Lade-Zeitstempel vergleichen; bei Abweichung Konfliktwarnung (Req 17.25), sonst über `createWritable()` schreiben |
+| Neuen leeren Weineintrag anlegen | Neue `.json`-Datei im `import_dir` über `getFileHandle(name, { create: true })` erzeugen |
+| Bildlose Weineinträge (fürs `name`-Autocomplete) | Wine-Listing nach Einträgen ohne gesetztes `image`-Feld (leer, `null` oder nicht vorhanden) filtern (Req 17.38) |
+| Anlegen aus Bildklick (from-image) | Neue `.json`-Datei im selben Unterordner wie das Bild mit vorläufigem Dateinamen (Bild-Basisname + `.json`) anlegen: alle WineSchema-Felder `null`, `image` = Dateiname, `tasting_date` aus EXIF `DateTimeOriginal` (clientseitig gelesen) oder `null` (Req 17.36/17.37) |
+| Bild verknüpfen (link-image) | `image`-Feld des bestehenden Eintrags setzen, Bilddatei bei Bedarf in das JSON-Verzeichnis verschieben (Lesen → neu anlegen → Original entfernen) und die vorläufige JSON entfernen (Req 17.41) |
+| Bild-Listing (mit `date` + `assigned`) | Verzeichnis scannen (`.jpg/.jpeg/.png/.webp`, case-insensitive), je Bild das Datum (EXIF `DateTimeOriginal`, sonst `File.lastModified`) ermitteln und `assigned` aus den `image`-Feldern der JSONs ableiten (Req 17.28/17.29) |
+| Medien-Listing (audio/video) | Verzeichnis nach passenden Mediendateien scannen (ohne `_archive`, Req 17.19) |
+| Thumbnails / Bildvorschauen | **Clientseitig** aus dem per File System Access API gelesenen Originalbild erzeugen (Canvas / `createImageBitmap`); Original unverändert (Req 17.33) |
+| Archivieren (Bild / Wein) | Datei(en) in `import_dir/_archive/` verschieben (Req 17.46/17.47) |
+| `_archive` | Bei allen Scans vollständig überspringen (Req 17.49) |
+| Autocomplete-/Dropdown-/Multi-Select-Werte | Aus den bereits geladenen Weineinträgen clientseitig ableiten (inkl. bekannter Rebsorten für `grape`, Req 17.17/17.18) |
+| WineSchema | `wine-schema.json` als statisches Asset der Editor-App laden |
 
-Neue Felder in `wine-schema.json` erscheinen automatisch als Eingabefeld ohne Code-Änderungen.
+Alle Scans (Wine-Listing, Bild-Listing, Medien-Listing) MÜSSEN den Ordner
+`import_dir/_archive/` vollständig ignorieren (Req 17.49): archivierte Bilder erscheinen
+nicht als unbekannte Weine, archivierte JSON-Dateien nicht als angelegte Weine. Die
+Zuordnung „unbekanntes Bild" / „ungenutztes Bild" ergibt sich daraus, dass kein `image`-Feld
+einer (nicht archivierten) JSON-Datei den Dateinamen referenziert; das Bild-Listing liefert
+diesen Status pro Bild als `assigned`-Flag (Req 17.28/17.29). Als Bilddateien gelten (für
+unbekannte Weine, ImagePicker und Thumbnails) Dateien mit den Endungen `.jpg`, `.jpeg`,
+`.png` und `.webp` case-insensitive (Req 17.32).
 
-**ImagePicker:**
-- Modal-Dialog mit Bildgitter
-- Standard: `GET /api/images/unassigned` (noch nicht zugeordnete Bilder)
-- Toggle: `GET /api/images` (alle Bilder)
-- Freitextsuche filtert nach Dateiname
+**Bild-Listing mit Datum und Zuordnungsstatus (Req 17.28/17.29):** Der
+`FileSystemAccessService` scannt den `import_dir` (ohne `_archive`) und liefert je
+Bilddatei ein Objekt mit mindestens `name` (Dateiname ohne Pfad), `date`
+(Aufnahme-/Dateidatum: EXIF `DateTimeOriginal`, falls vorhanden, sonst `File.lastModified`)
+und `assigned` (Zuordnungsstatus: `false` = keinem Weineintrag zugeordnet/ungenutzt,
+`true` = von einem `image`-Feld referenziert). Mit diesen Feldern sortiert das Frontend die
+ImagePicker-Galerie nach Datum (Req 17.30) und schaltet zwischen „nur ungenutzte" und „alle
+Bilder" um (Req 17.29). Das Namensfilter des ImagePicker (Req 17.31) arbeitet clientseitig
+auf dieser Liste.
+
+**Thumbnails / Bildvorschauen (Req 17.33):** Thumbnails werden **clientseitig im Browser**
+aus dem über die File System Access API gelesenen Originalbild erzeugt (z. B. über
+`createImageBitmap` und Zeichnen auf ein verkleinertes `<canvas>`, Ausgabe als
+Object-URL/Blob). Die Originaldateien werden dabei nie verändert. Diese Vorschauen nutzen
+die Listen-Thumbnails (angelegte wie unbekannte Weine), das Bildgitter des ImagePicker und
+die Vorschau im WineEditor, sodass nie die vollen Originalbilder angezeigt werden müssen
+(Req 17.33).
+
+**Medien-Picker für `audio`/`video` (Req 17.19):** Für die Felder `audio` und `video`
+listet der `FileSystemAccessService` die passenden Mediendateien im `import_dir` (ohne
+`_archive`) für den jeweiligen Feldtyp. Der zugehörige Frontend-Picker (analog zum
+ImagePicker) übernimmt bei Auswahl den **Dateinamen** der Mediendatei in das Feld `audio`
+bzw. `video`.
+
+**Auto-Save mit externer-Änderungserkennung (Req 17.20–17.25):** Das Editor-Frontend
+schreibt pro Feld frühestens 500 ms nach der letzten Eingabe direkt über die File System
+Access API in die JSON-Quelldatei (`createWritable()`). Zur Best-effort-Konflikterkennung
+merkt sich die App beim Laden des Eintrags dessen `File.lastModified`. Vor dem Schreiben
+liest sie `File.lastModified` erneut; weicht der Wert vom gemerkten Lade-Zeitstempel ab
+(= die Datei wurde seit dem Laden extern verändert, z. B. durch eine Cloud-Sync-Änderung
+eines anderen Beteiligten), warnt die App und überschreibt **nicht** ohne ausdrückliche
+Bestätigung des Benutzers (Req 17.25). Erfolg/Fehler jedes Auto-Saves steuern den
+Speicherstatus-Indikator (Zustände „Erfolg"/„Fehler", Req 17.23/17.24); bei Fehler bleiben
+die zuletzt eingegebenen Feldinhalte erhalten (Req 17.24). Beim Schreiben von
+`number`-Feldern konvertiert das Frontend typrichtig (`year` als Ganzzahl, `price` mit 2,
+`rating` mit 1 Nachkommastelle; Dezimal-Komma wird akzeptiert, z. B. „6,99" → `6.99`),
+konsistent zur Normalisierung im ImportScript (Req 17.22). Ein Eintrag ohne nicht-leeres
+`name`-Feld wird dabei nicht blockiert: Der Zwischenstand wird dennoch gespeichert, der
+Eintrag aber als unvollständig markiert (Req 17.20).
+
+**Defekte JSON-Dateien & schema-fremde Felder (Req 17.26/17.27):** Ist eine JSON-Datei im
+`import_dir` kein gültiges JSON, kennzeichnet die App sie im Listing als **fehlerhaft** und
+öffnet sie nicht zum Bearbeiten im WineEditor — die Korrektur erfolgt manuell im Dateisystem
+(Req 17.26). Enthält eine (gültige) JSON-Datei Felder, die nicht in der WineSchema definiert
+sind, liest, zeigt und speichert die App diese schema-fremden Felder unverändert mit (sie
+werden beim Auto-Save erhalten, nicht entfernt, Req 17.27).
+
+**Anlegen per Bildklick (from-image, Req 17.36/17.37):** Die App legt über die File System
+Access API im **selben Unterordner** des `import_dir` wie das angeklickte Bild eine neue
+JSON-Datei mit einem **vorläufigen Dateinamen** aus dem Bild-Basisnamen (+ `.json`) an.
+Alle WineSchema-Felder werden mit `null` initialisiert — außer `image` (Dateiname des
+Bildes, ohne Pfad) und `tasting_date` (aus EXIF `DateTimeOriginal` des clientseitig
+gelesenen Bildes, falls vorhanden, sonst `null`). Die **endgültige Umbenennung** nach dem
+Schema `{tasting_date}-{slug(name)}` bleibt bewusst der PhasePreparate des ImportScripts
+überlassen; der Editor dupliziert diese Umbenennungslogik nicht. `image`, `audio` und
+`video` werden stets nur als Dateiname ohne Pfad gespeichert; die Mediendateien liegen im
+selben Verzeichnis wie die JSON-Datei (Req 17.35).
+
+**Bildlose Einträge fürs `name`-Autocomplete (Req 17.38):** Nach einem Bildklick bietet das
+`name`-Feld des neuen Eintrags ein Autocomplete, das ausschließlich bestehende Weineinträge
+**ohne gesetztes `image`-Feld** vorschlägt. Dafür filtert die App das Wine-Listing auf alle
+(nicht-archivierten) Weineinträge, deren JSON kein gesetztes `image`-Feld hat (`image` leer,
+`null` oder nicht vorhanden). Diese Liste speist die beiden einzigen zulässigen Eingabewege
+des `name`-Feldes (Req 17.39): eigener neuer Name oder Auswahl eines bestehenden bildlosen
+Eintrags.
+
+**Verknüpfen mit einem bestehenden bildlosen Eintrag (link-image, Req 17.41/17.42/17.43):**
+Wählt der Benutzer im `name`-Autocomplete einen bestehenden bildlosen Weineintrag, führt die
+App über die File System Access API als **eine zusammenhängende Operation** aus:
+1. Setzt das `image`-Feld des bestehenden Eintrags auf den Bild-Dateinamen (ohne Pfad).
+2. Verschiebt die Bilddatei in das Verzeichnis der JSON des bestehenden Eintrags, falls sie
+   in einem anderen Unterordner des `import_dir` liegt (Lesen → am Ziel neu anlegen →
+   Original entfernen); Bild und JSON liegen danach stets im selben Verzeichnis (Req 17.35).
+3. Entfernt die vorläufige JSON der per Bildklick angelegten Datei.
+
+Danach existiert für den Wein **genau eine** JSON — die des bestehenden Eintrags (Req
+17.42); der WineEditor zeigt und bearbeitet fortan diesen Eintrag. Schlägt Schritt 2 oder 3
+fehl, zeigt die App eine erkennbare Fehleranzeige und stellt sicher, dass **kein Zustand mit
+doppelter JSON** für denselben Wein zurückbleibt (die vorläufige JSON wird nur entfernt,
+wenn das bestehende `image` konsistent gesetzt und das Bild am Zielort ist; andernfalls
+bleibt der Ausgangszustand erhalten, Req 17.43). Diese Invariante — **niemals zwei
+JSON-Dateien für denselben Wein** nach einem per Bildklick begonnenen Anlegevorgang — gilt
+für beide Wege: eigener Name (vorläufige JSON bleibt, `name` wird gesetzt, Req 17.40) wie
+auch Verknüpfung (vorläufige JSON entfällt, bestehende bleibt).
+
+**Archivierung (`import_dir/_archive/`):** Archivieren eines ungenutzten Bildes verschiebt
+die Bilddatei, Archivieren eines angelegten Weineintrags verschiebt die JSON-Datei zusammen
+mit den in `image`/`audio`/`video` referenzierten Mediendateien (sofern vorhanden) in den
+`_archive`-Ordner (Req 17.46/17.47) — jeweils über die File System Access API. Scheitert ein
+Verschieben, bleibt die betroffene Datei an ihrem Ursprungsort und die App zeigt eine
+erkennbare Fehleranzeige (Req 17.48). Es gibt bewusst weder eine Lösch- noch eine
+Dearchivierungs-Funktion (Req 17.44/17.50) — endgültiges Löschen und Zurückholen erfolgen
+manuell im Dateisystem.
+
+**Cloud-Sync-Einschränkung (Req 17.5):** Die Verteilung der JSON-Quelldateien, Bild- und
+Mediendateien zwischen den Beteiligten übernimmt ausschließlich die Cloud-Synchronisation
+des Ordners. Die WineEditorApp löst **keine** Cloud-Sync-Konflikte auf: Bearbeiten mehrere
+Personen gleichzeitig dieselbe Datei, kann die Cloud-Sync Konfliktkopien erzeugen, die
+außerhalb der Verantwortung der App liegen. Die Best-effort-Konflikterkennung des Auto-Saves
+über `File.lastModified` (Req 17.25) deckt nur den lokalen Fall ab, dass die Datei seit dem
+Laden verändert wurde; sie ersetzt keine Cloud-Sync-Konfliktauflösung.
+
+**Konflikterkennung über `File.lastModified` (clientseitig):**
+
+```typescript
+// Auszug aus dem Auto-Save über die File System Access API
+async save(fileHandle: FileSystemFileHandle, loadedLastModified: number, data: object) {
+  const current = await fileHandle.getFile();
+  if (current.lastModified !== loadedLastModified) {
+    // Datei wurde seit dem Laden extern verändert (z. B. Cloud-Sync) — Req 17.25
+    throw new ConflictError();           // Frontend warnt, überschreibt erst nach Bestätigung
+  }
+  const writable = await fileHandle.createWritable();
+  await writable.write(JSON.stringify(data, null, 2));
+  await writable.close();
+}
+```
+
+#### Editor-Angular-Frontend (`frontend/projects/editor`)
+
+**Kein Login, Auto-Refresh & manueller Aktualisieren-Button (Req 17.6/17.7):** Die
+`editor`-App hat **keinen Login-Screen** und keine Auth-Logik — sie ist eine reine
+Browser-App ohne Backend und greift über den `FileSystemAccessService` direkt auf den
+freigegebenen `import_dir` zu (Req 16). Nach jeder **eigenen** Aktion (Anlegen,
+Archivieren, Bild-Verknüpfen oder Speichern) aktualisiert die App die Eintragsliste
+automatisch (Req 17.6). Für Änderungen anderer Beteiligter, die über die
+Cloud-Synchronisation in den `import_dir` gelangen, stellt die App einen **manuellen
+Aktualisieren-Button** zum Neuladen der Liste bereit (erneuter Verzeichnis-Scan); es gibt
+**kein** automatisches Polling (Req 17.7).
+
+**Zwei-Spalten-Layout (Req 17.8/17.9):** links die Eintragsliste, rechts der
+`WineEditor` für den gewählten Eintrag. Ein Klick auf einen Listeneintrag zeigt dessen
+Details rechts; unbekannte Weine werden mit dem Platzhaltertext „unbekannter Wein", dem
+aus dem Bild ermittelten `tasting_date` (sofern vorhanden) und einer clientseitig erzeugten
+Bildvorschau dargestellt (Req 17.13).
+
+**Geteilte Filterlogik (Req 17.10/17.11):** Die Liste nutzt denselben `FilterService`
+und dieselbe ControlsRow-/Filter-Logik wie die öffentliche Weinliste — beide Apps
+importieren sie aus `@weinsprechstunde/shared`, sodass Filter-, Such-, Sortier- und
+WineSchema-Verarbeitung nicht dupliziert werden. Die bestehende FilterService-Logik der
+öffentlichen App wird dafür unverändert in die `shared`-Library extrahiert; die
+öffentliche Weinliste konsumiert sie danach aus derselben Library und behält ihr
+Verhalten. Die attributbasierten Filter (Freitextsuche, Rebsorte, Region, Rating-Range,
+…) stammen vollständig aus dem geteilten `FilterService`.
+
+**Standard-Sortierung (Req 17.12):** Die Liste wird standardmäßig absteigend nach
+`tasting_date` sortiert, wobei angelegte und unbekannte Weine gemischt nach Datum
+einsortiert werden und Einträge ohne ermittelbares `tasting_date` ans Ende gestellt
+werden. Diese Sortierung sowie die weiteren Sortieroptionen stammen aus dem geteilten
+`FilterService` (identisch zur öffentlichen Weinliste) und werden nicht im Editor
+dupliziert; unbekannte Weine werden dafür mit ihrem aus dem Bild ermittelten
+`tasting_date` in dieselbe Sortierung eingereiht.
+
+**Zusätzlicher Eintragstyp-Filter (Req 17.10/17.14/17.15):** Nur im Editor gibt es einen
+dreiwertigen Eintragstyp-Filter „Alle" / „Nur angelegte" / „Nur unbekannte". Angelegte
+Weine haben eine JSON-Quelldatei im `import_dir`; unbekannte Weine sind Bilddateien ohne
+referenzierende JSON (die Bild-Listing-Einträge mit `assigned = false`). Steht der Filter
+auf „Nur unbekannte" und der Benutzer tippt in einen attributbasierten Filter, schaltet der
+Editor automatisch auf „Nur angelegte" um (unbekannte Weine besitzen keine solchen
+Attribute, Req 17.15). Dieser Filter ist editor-spezifisch und liegt in der `editor`-App,
+nicht in der geteilten Library.
+
+**WineEditor-Formular** — Angular-Formularsteuerelemente dynamisch aus `wine-schema.json`
+(neue Felder erscheinen automatisch, ohne Code-Änderung, Req 17.16):
+
+| WineSchema `type` / `filter_type` | Angular-Eingabe |
+|---|---|
+| `text` (name) | Textfeld; Pflichtfeld — leeres `name` markiert den Eintrag als unvollständig, blockiert aber nicht (Req 17.20) |
+| `number` (year) | Zahleneingabe (min=1900, max=2100); Auto-Save schreibt eine Ganzzahl (Req 17.22) |
+| `date` (tasting_date) | Datepicker (Req 17.16) |
+| `rating` (rating) | Zahleneingabe min=1.0, max=10.0, step=0.1; Auto-Save schreibt 1 Nachkommastelle (Req 17.16/17.22) |
+| `dropdown`/`multi-select` (country, origin, type, producer, quality) | Auswahl aus vorkommenden Werten (clientseitig aus den geladenen Einträgen, Req 17.17) |
+| `multi-value` (grape) | Tag-/Chip-Eingabe mit Autocomplete aus bekannten Rebsorten (Req 17.18) |
+| `text` (price) | Textfeld mit Autocomplete aus den bekannten Werten; Auto-Save schreibt 2 Nachkommastellen, Dezimal-Komma akzeptiert (Req 17.17/17.22) |
+| `text` (description) | Mehrzeiliges Textfeld |
+| schema-fremdes Feld (nicht in WineSchema) | Wird angezeigt und beim Speichern erhalten (Req 17.27) |
+| `text` (name, per Bildklick angelegter Eintrag) | Textfeld mit Autocomplete bildloser Einträge; genau zwei Wege: eigener neuer Name oder Auswahl eines bestehenden bildlosen Eintrags (Req 17.38/17.39) |
+| `text` (image) | ImagePicker (Req 17.28/17.29/17.30/17.31) |
+| `text` (audio, video) | Medien-Picker analog zum ImagePicker (Req 17.19) |
+
+**Grape als Tag-/Chip-Eingabe (Req 17.18):** Das multi-value-Feld `grape` wird als
+Chip-Eingabe umgesetzt: Rebsorten werden einzeln als Chips hinzugefügt, jeweils mit
+Autocomplete-Vorschlägen aus den bereits vorkommenden Rebsorten (clientseitig aus den
+geladenen Einträgen abgeleitet). Der Wert wird als **Array** in der JSON-Quelldatei
+gespeichert.
+
+**Unvollständige Einträge (Req 17.20):** Fehlt einem Eintrag ein nicht-leeres
+`name`-Feld, markiert der Editor ihn sichtbar als unvollständig — sowohl in der
+Eintragsliste (links) als auch im WineEditor (rechts). Das Auto-Save speichert den
+Zwischenstand dennoch; es blockiert nicht.
+
+**Defekte JSON & schema-fremde Felder (Req 17.26/17.27):** Eine JSON-Quelldatei, die kein
+gültiges JSON ist, wird in der Eintragsliste sichtbar als **fehlerhaft** markiert und lässt
+sich **nicht** im WineEditor öffnen (die Korrektur erfolgt manuell im Dateisystem, Req
+17.26). Enthält ein (gültiger) Eintrag Felder, die nicht in der WineSchema definiert sind,
+zeigt der WineEditor diese schema-fremden Felder an und erhält sie beim Auto-Save
+unverändert (Req 17.27).
+
+**Live-/Auto-Save (Req 17.21–17.25):** Pro Feld wird mit 500 ms Debounce automatisch über
+die File System Access API in die JSON-Quelldatei geschrieben — keine manuelle
+Speicheraktion (Req 17.21). `number`-Felder werden beim Auto-Save typrichtig konvertiert
+(`year` als Ganzzahl, `price` mit 2, `rating` mit 1 Nachkommastelle; Dezimal-Komma
+akzeptiert, z. B. „6,99" → `6.99`), konsistent zur Normalisierung im ImportScript (Req
+17.22). Ein **Speicherstatus-Indikator** zeigt die diskreten Zustände „Erfolg" bzw.
+„Fehler" (Req 17.23/17.24); bei Fehler bleiben die zuletzt eingegebenen Feldinhalte erhalten
+(Req 17.24). Erkennt die App eine externe Änderung (`File.lastModified` weicht vom
+Lade-Zeitstempel ab), warnt sie und überschreibt erst nach Bestätigung (Req 17.25). Nach
+erfolgreichem Speichern aktualisiert die App die Liste automatisch (Req 17.6).
+
+**ImagePicker (Req 17.28–17.31/17.34):** Eine durchsuchbare Galerie mit Thumbnails der
+Bilddateien im `import_dir` (Bildtypen `.jpg/.jpeg/.png/.webp`, case-insensitive). Die
+Thumbnails werden **clientseitig im Browser** aus den über die File System Access API
+gelesenen Originalbildern erzeugt (Originale unverändert, Req 17.33). Datengrundlage ist das
+clientseitige Bild-Listing, das je Bild `name`, `date` (EXIF `DateTimeOriginal` bzw.
+`File.lastModified`) und `assigned` (Zuordnungsstatus) liefert. Daraus ergibt sich das
+Verhalten des Pickers:
+
+- **Standardansicht (Req 17.28):** nur ungenutzte Bilder (`assigned = false`), also keinem
+  Weineintrag zugeordnet.
+- **Umschalt-Button (Req 17.29):** wechselt die Anzeige zwischen „nur ungenutzte" und
+  „alle Bilder" — rein clientseitig über das `assigned`-Flag.
+- **Sortierung nach Datum (Req 17.30):** die angezeigten Bilder werden nach dem
+  `date`-Feld (Aufnahme-/Dateidatum) sortiert.
+- **Filter-Eingabefeld (Req 17.31):** filtert die angezeigten Bilder clientseitig nach
+  Dateiname.
+
+Bei Auswahl eines Bildes wird dessen Dateiname (ohne Pfad) in das `image`-Feld des aktuell
+bearbeiteten Eintrags übernommen (Req 17.34). Der `_archive`-Ordner erscheint nie.
+
+**Audio-/Video-Picker (Req 17.19):** Für die Felder `audio` und `video` gibt es je einen
+Medien-Picker analog zum ImagePicker. Er listet die passenden Mediendateien aus dem
+`import_dir` über den `FileSystemAccessService` (ohne `_archive`) und übernimmt bei Auswahl
+den **Dateinamen** (ohne Pfad) in das jeweilige Feld (Req 17.35).
+
+**Neuer Eintrag per Bildklick (Req 17.36/17.37):** Ein Klick auf das Bild eines
+unbekannten Weins legt über den `FileSystemAccessService` eine neue JSON-Datei an und öffnet
+den `WineEditor` für den neuen Eintrag. Die neue JSON-Datei erhält einen vorläufigen Namen
+aus dem Bild-Basisnamen (+ `.json`) im **selben Unterordner** wie das Bild — alle
+WineSchema-Felder `null`, außer `image` (Dateiname) und `tasting_date` (aus EXIF
+`DateTimeOriginal` bzw. `null`). Die endgültige Umbenennung nach
+`{tasting_date}-{slug(name)}` übernimmt später die PhasePreparate des ImportScripts
+(keine Duplizierung der Umbenennungslogik im Editor). Nach dem Anlegen aktualisiert die App
+die Liste automatisch (Req 17.6).
+
+**`name`-Autocomplete & zwei Wege nach Bildklick (Req 17.38–17.43):** Ist der WineEditor für
+einen soeben per Bildklick angelegten Eintrag geöffnet, bietet das `name`-Feld ein
+Autocomplete, das ausschließlich **bestehende bildlose Weineinträge** vorschlägt (JSON ohne
+gesetztes `image`-Feld), clientseitig aus dem Wine-Listing gefiltert (Req 17.38). Es gibt
+genau zwei zulässige Eingabewege (Req 17.39):
+
+- **(a) Eigener neuer Name (Req 17.40):** Der Benutzer tippt einen neuen Namen, ohne einen
+  Autocomplete-Vorschlag auszuwählen. Die vorläufige JSON bleibt bestehen, ihr `name`-Feld
+  wird mit der Eingabe befüllt (Auto-Save wie gehabt).
+- **(b) Auswahl eines bestehenden bildlosen Eintrags (Req 17.41):** Die App setzt dessen
+  `image`-Feld auf den Bild-Dateinamen, verschiebt das Bild bei Bedarf in das Verzeichnis
+  der JSON dieses Eintrags (Bild und JSON stets im selben Verzeichnis) und entfernt die
+  vorläufige JSON — als eine zusammenhängende Operation über die File System Access API.
+  Danach zeigt und bearbeitet der WineEditor den bestehenden Eintrag.
+
+Nach Abschluss eines per Bildklick begonnenen Anlegevorgangs existiert für denselben Wein
+**genau eine** JSON-Quelldatei (Req 17.42) — entweder der per eigenem Namen fortgeführte
+vorläufige Eintrag oder der aus dem Autocomplete gewählte bestehende Eintrag. Schlägt beim
+Weg (b) das Entfernen der vorläufigen JSON oder das Bildverschieben fehl, zeigt die App eine
+erkennbare Fehleranzeige und hinterlässt **keinen** Zustand mit doppelter JSON für denselben
+Wein (Req 17.43). Die Invariante lautet: **niemals zwei JSON-Dateien für denselben Wein.**
+
+**Archivieren (kein Löschen):** Der Editor bietet keine Lösch-Funktion (Req 17.44). Als
+entfernende Aktionen existieren ausschließlich: ungenutztes Bild archivieren bzw. angelegten
+Eintrag samt referenzierter `image`/`audio`/`video`-Medien archivieren — jeweils durch
+Verschieben nach `import_dir/_archive/` über die File System Access API. Bei Fehlschlag
+zeigt die App eine erkennbare Fehleranzeige und die Dateien bleiben am Ursprungsort
+(Req 17.46–17.48). Nach dem Archivieren aktualisiert die App die Liste automatisch (Req
+17.6). Dearchivieren erfolgt manuell im Dateisystem (Req 17.50).
 
 ---
 
@@ -1825,10 +2214,8 @@ class DeployConfig:
     user: str = ""
     password: str = ""
 
-@dataclass
-class EditorConfig:
-    path: str                     # URL-Pfad des Editors
-    password_hash: str            # bcrypt-Hash
+# Kein EditorConfig mehr: Die WineEditorApp ist eine reine Browser-App ohne Backend
+# und ohne Auth; die früheren Felder editor.path / editor.password_hash entfallen (Req 16.4).
 
 @dataclass
 class Config:
@@ -1840,7 +2227,6 @@ class Config:
     image_resize_mode: str        # "width" | "height"
     image_resize_px: int
     deploy: DeployConfig
-    editor: EditorConfig
     backup: Optional[BackupConfig] = None
 ```
 
@@ -2031,11 +2417,11 @@ export interface UserPreferences {
 
 **Validates: Requirements 14.2**
 
-### Property 17: ETag-Konflikt-Erkennung
+### Property 17: Konflikt-Erkennung über `File.lastModified`
 
-*For any* Weineintrag: Wenn zwei `PUT /api/wines/{id}`-Anfragen dasselbe initiale ETag verwenden und die erste erfolgreich gespeichert wird, muss die zweite mit HTTP 409 abgelehnt werden.
+*For any* Weineintrag: Wenn der Auto-Save der WineEditorApp beim Speichern feststellt, dass die `File.lastModified` der JSON-Quelldatei seit dem Laden abweicht (die Datei wurde extern verändert), muss der Schreibvorgang abgelehnt und eine Konfliktwarnung ausgelöst werden, ohne die Datei ohne Bestätigung zu überschreiben.
 
-**Validates: Requirements 17.16**
+**Validates: Requirements 17.25**
 
 ### Property 18: WineSchema-Roundtrip
 
@@ -2067,6 +2453,42 @@ export interface UserPreferences {
 
 **Validates: Requirements 21.8, 21.9, 21.10, 21.11, 21.12**
 
+### Property 23: Clientseitiges Thumbnail lässt Original unverändert und erhält Seitenverhältnis
+
+*For any* Originalbild (`.jpg/.jpeg/.png/.webp`) mit beliebigen Dimensionen im `import_dir`: Nach der clientseitigen Thumbnail-Erzeugung des `FileSystemAccessService` (Canvas / `createImageBitmap`) muss (1) die Originaldatei byte-identisch unverändert bleiben und (2) das Seitenverhältnis der erzeugten Vorschau innerhalb einer Toleranz von 0,01 dem Seitenverhältnis des Originals entsprechen.
+
+**Validates: Requirements 17.33**
+
+### Property 24: Anlegen per Bildklick — Ort, Name und Feldbelegung
+
+*For any* Bilddatei in einem beliebigen Unterordner des `import_dir`: Nach dem Anlegen per Bildklick (from-image über den `FileSystemAccessService`) muss die erzeugte JSON-Datei (1) im selben Unterordner wie das Bild liegen, (2) als Basisnamen den Basisnamen des Bildes tragen (Endung `.json`), (3) `image` auf den Dateinamen des Bildes (ohne Pfad) gesetzt haben, (4) `tasting_date` auf den EXIF-`DateTimeOriginal`-Wert bzw. `null` gesetzt haben und (5) alle übrigen WineSchema-Felder auf `null` gesetzt haben — ohne dass eine Umbenennung nach `{tasting_date}-{slug(name)}` stattfindet.
+
+**Validates: Requirements 17.35, 17.36, 17.37**
+
+### Property 25: Genau eine JSON pro Wein nach from-image-Verknüpfung
+
+*For any* per Bildklick angelegten vorläufigen Weineintrag und *for any* bestehenden bildlosen Weineintrag: Nach Abschluss des Verknüpfungswegs (link-image über den `FileSystemAccessService`) existiert für den betroffenen Wein **genau eine** JSON-Quelldatei — die des bestehenden Eintrags mit auf den Bild-Dateinamen gesetztem `image`-Feld, während die vorläufige JSON entfernt ist und Bild und JSON im selben Verzeichnis liegen. Schlägt das Entfernen der vorläufigen JSON oder das Verschieben des Bildes fehl, darf **kein** Zustand mit zwei JSON-Quelldateien für denselben Wein zurückbleiben.
+
+**Validates: Requirements 17.41, 17.42, 17.43**
+
+### Property 26: Zugriff bleibt auf den freigegebenen Ordner beschränkt
+
+*For any* datei- und bildbezogene Operation der WineEditorApp (Lesen, Schreiben, Anlegen, Verschieben, Thumbnail, Archivieren): Der Zugriff bleibt ausschließlich auf den vom Benutzer freigegebenen Cloud-Ordner (= `import_dir`) und dessen Inhalt beschränkt; ein Ausbruch über diesen Ordner hinaus ist durch die File System Access API technisch ausgeschlossen (API-garantiert, keine anwendungsseitige Pfadprüfung).
+
+**Validates: Requirements 16.2**
+
+### Property 27: Editor-Typkonvertierung beim Auto-Save
+
+*For any* `number`-Feld der WineSchema und *for any* Eingabewert, der eine Zahl mit optionalem Dezimal-Komma darstellt: Der beim Auto-Save geschriebene JSON-Wert muss eine Zahl sein, die der konfigurierten `decimals`-Normalisierung entspricht (`year` Ganzzahl, `price` 2 Nachkommastellen, `rating` 1 Nachkommastelle), wobei ein Dezimal-Komma wie ein Dezimalpunkt behandelt wird (z. B. „6,99" → `6.99`) — konsistent zur Normalisierung im ImportScript.
+
+**Validates: Requirements 17.22**
+
+### Property 28: Schema-fremde Felder bleiben erhalten
+
+*For any* gültige JSON-Quelldatei mit beliebigen Feldern außerhalb der WineSchema: Nach dem Laden im WineEditor und einem anschließenden Auto-Save müssen alle schema-fremden Felder unverändert in der JSON-Quelldatei enthalten sein — kein schema-fremdes Feld darf entfernt oder verändert werden.
+
+**Validates: Requirements 17.27**
+
 ---
 
 ## Error Handling
@@ -2086,17 +2508,23 @@ export interface UserPreferences {
 | Wine ohne `image`, kein Sibling gefunden | PlaceholderIcon in WineTileCover rendern |
 | Leere Filterergebnisse (Frontend) | Hinweismeldung „Keine Weine gefunden" im Grid/List |
 | Unbekannte Felder in Wine-JSON | Werden unverändert durchgereicht (`[key: string]: unknown`) |
-| Editor: falsches Passwort | HTTP 401, generische Fehlermeldung im Login-Formular |
-| Editor: IP gesperrt (Rate-Limiting) | HTTP 401, dieselbe generische Fehlermeldung (kein Hinweis auf Sperrung) |
-| Editor: ETag-Konflikt beim Speichern | HTTP 409, Warnung im Formular vor dem Überschreiben |
-| Editor: Session abgelaufen | Weiterleitung zur Login-Seite |
-| Editor: HTTP-Zugriff (nicht HTTPS) | Weiterleitung auf HTTPS |
+| Editor: Ordner-Freigabe verweigert/zurückgezogen | Editor zeigt Aufforderung zur (Re-)Freigabe des Cloud-Ordners; ohne Freigabe kein Datenzugriff (Req 17.2/17.3) |
+| Editor: fehlende File System Access API (nicht-Chromium-Browser) | Verständlicher Hinweis statt Editor-Oberfläche (Req 17.4) |
+| Editor: Schreibfehler beim Auto-Save | Speicherstatus „Fehler", zuletzt eingegebene Feldinhalte bleiben erhalten (Req 17.24) |
+| Editor: Konflikt beim Speichern (`File.lastModified` abweichend) | Konfliktwarnung vor dem Überschreiben, kein Schreiben ohne Bestätigung (Req 17.25) |
+| Editor: defekte JSON-Quelldatei | In Liste als fehlerhaft markiert, nicht im WineEditor geöffnet (Req 17.26) |
+| Editor: Archiv-Verschieben schlägt fehl | Datei bleibt am Ursprungsort, erkennbare Fehleranzeige (Req 17.48) |
+| Editor: link-image/Verschieben schlägt fehl | Kein Zustand mit doppelter JSON, erkennbare Fehleranzeige (Req 17.43) |
+| Editor: gleichzeitige Cloud-Sync-Bearbeitung | Cloud-Sync kann Konfliktkopien erzeugen; die WineEditorApp löst das nicht auf (Req 17.5) |
 
 ---
 
 ## Testing Strategy
 
-**Drei Teststacks, je nach Subsystem:**
+**Zwei Teststacks:** Python (Import- und Migrations-Skript mit pytest + hypothesis) und
+Angular (öffentliche Weinliste, Wine-Editor-App und die geteilte Library mit vitest + jsdom +
+fast-check über `ng test` / `@angular/build:unit-test`). Die Wine-Editor-App hat kein Backend und damit keinen eigenen Teststack mehr —
+sie wird im Angular-Stack getestet.
 
 ### Python Import-Skript (pytest + hypothesis)
 
@@ -2114,9 +2542,9 @@ export interface UserPreferences {
   - Tag-Format: `# Feature: weinliste, Property N: <property_text>`
   - Property 22 (Migration – kein Datenverlust): generierte postmeta-Einträge, die sicherstellen, dass jeder Nutzdaten-Key entweder gemappt oder als `wp_unmapped_*` erhalten bleibt
 
-### Angular Frontend (Jasmine + fast-check)
+### Angular Frontend (vitest + jsdom + fast-check)
 
-- **Unit-Tests**: WineDataService (HTTP-States, paralleles Laden), FilterService (Filterlogik inkl. dropdowns/multiSelects/Bound-Filter, resetFilterKey, Cookie-Init), AppComponent (Tastaturkürzel i/l inkl. Guard-Bedingungen), ControlsRowComponent (Filterkatalog, Mehr-Filter-Menü, removeFilter), FilterFieldComponent (Freitextsuche, Multiselect-Dropdown, Bound-Felder), SortButtonComponent (5 Optionen), WineTileComponent (Overlay-Toggle, Play-Button), WineDetailDialogComponent (close, Backdrop-Click, Body-Scroll-Lock), NavComponent (Logo-Klick = clearAllFilters + '/'), WineListItemComponent (Thumbnail + Felder), UserPreferencesService (Cookie-Roundtrip), WineGridComponent/WineListComponent (alle Weine gerendert, Zurück-Button)
+- **Unit-Tests**: WineDataService (HTTP-States, paralleles Laden), FilterService (Filterlogik inkl. dropdowns/multiSelects/Bound-Filter, resetFilterKey, Cookie-Init), AppComponent (Tastaturkürzel i/l inkl. Guard-Bedingungen; Pfeiltasten-Navigation ←/→: nächster/vorheriger Wein mit Modulo-Wrap über `filteredWines`, Öffnen des ersten Weins bei `→` bzw. des letzten bei `←` wenn kein Dialog offen ist, i/l bei offenem Dialog blockiert während ←/→ navigieren, sowie Guards in Eingabefeldern und mit Modifier-Tasten), ControlsRowComponent (Filterkatalog, Mehr-Filter-Menü, removeFilter), FilterFieldComponent (Freitextsuche, Multiselect-Dropdown, Bound-Felder), SortButtonComponent (5 Optionen), WineTileComponent (Overlay-Toggle, Play-Button), WineDetailDialogComponent (close, Backdrop-Click, Body-Scroll-Lock), NavComponent (Logo-Klick = clearAllFilters + '/'), WineListItemComponent (Thumbnail + Felder), UserPreferencesService (Cookie-Roundtrip), WineGridComponent/WineListComponent (alle Weine gerendert, Zurück-Button)
 - **Property-Tests (fast-check)**: Properties 10–16, 19
   - `applyFiltersAndSort` — Properties 10, 11, 14 (pure function, kein DOM nötig)
   - WineTileComponent — Properties 12, 13, 15 (via TestBed)
@@ -2125,8 +2553,19 @@ export interface UserPreferences {
   - Mindestens 100 Iterationen: `fc.assert(fc.property(...), { numRuns: 100 })`
   - Tag-Format: `// Feature: weinliste, Property N: <property_text>`
 
-### FastAPI Editor (pytest + httpx)
+### Wine-Editor-App: Angular (vitest + jsdom + fast-check)
 
-- **Unit-Tests**: Auth (richtiges/falsches Passwort, bcrypt), Rate-Limiter (Fehlversuche, Sperr-Fenster), CRUD (GET/PUT/POST/DELETE), Autocomplete, ImagePicker-Endpunkte, Schema-Endpunkt
-- **Property-Tests (hypothesis)**: Property 17 (ETag-Konflikt), Property 18 (WineSchema-Roundtrip)
-- **Integration**: Vollständiger Auth-Flow (Login → geschützter Endpunkt → Session-Ablauf)
+Die Editor-Angular-App (`frontend/projects/editor`) ist eine reine Browser-App ohne
+Backend und wird mit **demselben Test-Setup wie die öffentliche Weinliste** getestet
+(`ng test`, vitest + jsdom + fast-check). Es gibt **keine** FastAPI-/pytest-Tests mehr. Die File
+System Access API wird in den Tests über den `FileSystemAccessService` gemockt/abstrahiert
+(ein Fake-Service bzw. gemockte Verzeichnis-/Datei-Handles), sodass Listings, Anlegen,
+Verschieben, Konflikterkennung und Thumbnail-Erzeugung ohne echten Dateizugriff prüfbar sind.
+
+- **Browser-Voraussetzungen & Ordner-Freigabe**: kein Login-Screen — Start ohne Anmeldung (Req 16.1/17.1); Ordner-Freigabe beim ersten Start und Handle-Persistenz/-Wiederherstellung über IndexedDB (gemockt), Re-Autorisierung beim erneuten Öffnen (Req 17.2/17.3); verständlicher Hinweis bei fehlender File System Access API (nicht-Chromium-Browser, Req 17.4)
+- **Keine Netzwerkanfragen für Daten / keine Weindaten in der App**: alle Datenzugriffe laufen über den `FileSystemAccessService` auf den freigegebenen `import_dir`; die App enthält keine gebündelten Weindaten (Req 16.2/16.3)
+- **Unit-Tests**: Auto-Refresh der Liste nach eigener Aktion (Anlegen/Archivieren/Verknüpfen/Speichern) und manueller Aktualisieren-Button (erneuter Scan) ohne Polling (Req 17.6/17.7), Zwei-Spalten-Layout/Eintragsauswahl (Req 17.8/17.9), Standard-Sortierung über den geteilten FilterService (tasting_date absteigend, gemischte Typen, undatierte ans Ende, Req 17.12), Eintragstyp-Filter (drei Zustände; Auto-Umschalten „Nur unbekannte" → „Nur angelegte" bei attributbasierter Eingabe, Req 17.14/17.15), WineEditor-Formular aus WineSchema (Datepicker, Rating-Step, Req 17.16), Dropdown-/Multi-Select-Werte aus geladenen Einträgen (Req 17.17), grape als Tag-/Chip-Eingabe mit Autocomplete → Array (Req 17.18), Audio-/Video-Picker übernimmt Dateiname (Req 17.19/17.35), Unvollständig-Markierung bei leerem `name` in Liste und WineEditor ohne Blockieren (Req 17.20), defekte JSON in Liste als fehlerhaft markiert und nicht öffenbar (Req 17.26), schema-fremde Felder angezeigt und beim Speichern erhalten (Req 17.27), Bild-Listing mit `date`/`assigned` und unbekannte Weine (`assigned = false`; Bildtypen `.jpg/.jpeg/.png/.webp` case-insensitive, Req 17.28/17.29/17.32), ImagePicker (Standard „nur ungenutzte" / Umschalt-Button auf alle / Datumssortierung / Dateinamen-Filter, clientseitige Thumbnail-Vorschau, Req 17.28–17.31/17.34), Auto-Save-Debounce (500 ms) direkt über die File System Access API + Typkonvertierung der number-Felder + Speicherstatus-Indikator (Erfolg/Fehler, Req 17.21–17.24), Konfliktwarnung bei abweichender `File.lastModified` (Req 17.25), Anlegen per Bildklick (vorläufiger Name im selben Unterordner, Felder `null` außer `image`/`tasting_date`, Req 17.36/17.37), `name`-Autocomplete bildloser Einträge mit genau zwei Wegen — eigener Name bzw. Verknüpfung (link-image), am Ende genau eine JSON pro Wein, Fehleranzeige ohne doppelte JSON (Req 17.38–17.43), Archivieren-Aktionen (Verschieben nach `_archive/`) inkl. Fehleranzeige — **keine** Lösch-Aktion (Req 17.44/17.46–17.48), `_archive`-Ignorierung bei allen Scans (Req 17.49)
+- **Property-Tests (fast-check)**: Property 17 (Konflikt-Erkennung über `File.lastModified`), Property 23 (clientseitiges Thumbnail lässt Original unverändert, Seitenverhältnis), Property 24 (from-image: Ort/Name/Feldbelegung), Property 25 (genau eine JSON pro Wein nach from-image-Verknüpfung), Property 26 (Zugriff bleibt auf den freigegebenen Ordner beschränkt — über den gemockten `FileSystemAccessService`), Property 27 (Editor-Typkonvertierung), Property 28 (schema-fremde Felder bleiben erhalten)
+  - Mindestens 100 Iterationen: `fc.assert(fc.property(...), { numRuns: 100 })`
+  - Tag-Format: `// Feature: weinliste, Property N: <property_text>`
+- **Geteilte Library (`@weinsprechstunde/shared`)**: FilterService-, Filter-/Such-/Sortier- und WineSchema-Verarbeitungslogik wird durch die bestehenden Tests der Library abgedeckt (vitest + jsdom + fast-check, Properties 10, 11, 14 der `applyFiltersAndSort`-Logik, inkl. der Standard-Sortierung aus Req 17.12) und gilt damit für beide Apps gemeinsam — keine Duplizierung der Tests.
