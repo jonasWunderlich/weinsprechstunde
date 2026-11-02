@@ -1,0 +1,42 @@
+name: Deploy Weinsprechstunde
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Python dependencies
+        run: pip install -r scripts/requirements.txt
+
+      - name: Install Node dependencies
+        run: npm ci
+        working-directory: frontend
+
+      # Bei import_source = "remote" lädt das Skript den Import-Ordner zu
+      # Beginn von prepare automatisch via SFTP/FTP herunter.
+      - name: Run import pipeline
+        env:
+          WEINSPRECHSTUNDE_DEPLOY_PASSWORD: ${{ secrets.WEINSPRECHSTUNDE_DEPLOY_PASSWORD }}
+        run: python scripts/weinimport.py prepare && python scripts/weinimport.py export && python scripts/weinimport.py image-export
+
+      - name: Build Angular
+        run: npm run build
+        working-directory: frontend
+
+      - name: Deploy to server
+        env:
+          WEINSPRECHSTUNDE_DEPLOY_PASSWORD: ${{ secrets.WEINSPRECHSTUNDE_DEPLOY_PASSWORD }}
+        run: python scripts/weinimport.py deploy

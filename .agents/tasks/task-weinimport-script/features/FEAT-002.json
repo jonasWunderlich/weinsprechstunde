@@ -1,0 +1,27 @@
+{
+  "id": "FEAT-002",
+  "type": "chore",
+  "description": "Build-Pipeline und CI fuer das Import-Skript (Task 9): Makefile mit Einzel-Targets und voller deploy-Pipeline, minimale frontend/package.json mit prebuild-Script, GitHub Actions deploy.yml. Haengt von FEAT-001 ab (ruft scripts/weinimport.py auf). Maßgeblich ist design.md (Makefile/prebuild/deploy.yml im Python-Abschnitt) und Req 5.",
+  "status": "pending",
+  "steps": [
+    "Makefile im Projekt-Root anlegen mit Targets: 'prepare' (ruft 'python scripts/weinimport.py prepare'), 'export', 'image-export' jeweils einzeln/unabhaengig; 'deploy' fuehrt die volle Pipeline aus: prepare -> export -> image-export -> 'cd frontend && ng build' -> 'python scripts/weinimport.py deploy'. Als Python-Interpreter die venv nutzen (z.B. Variable PY ?= .venv/bin/python) damit die Targets lokal reproduzierbar sind.",
+    "frontend/package.json anlegen (minimal, scripts-Block) mit 'prebuild', das die drei Phasen sequenziell und abbrechend mit && verkettet: 'python ../scripts/weinimport.py prepare && python ../scripts/weinimport.py export && python ../scripts/weinimport.py image-export'. Kommentar/Hinweis im Repo (nicht im JSON), dass diese package.json spaeter von Task 15 (Angular-Setup) erweitert wird; nur minimalen scripts-Block + name/version/private setzen, nichts ueberspezifizieren.",
+    ".github/workflows/deploy.yml anlegen wie design.md: on push branches [main]; Steps actions/checkout@v4, actions/setup-python@v5 (python-version '3.12'), actions/setup-node@v4 (node-version '20'); 'pip install -r scripts/requirements.txt'; 'npm ci' (working-directory frontend); (bei import_source=='remote' laedt das Skript den Import-Ordner selbst herunter — kein separater Step noetig, aber Kommentar dazu); 'python scripts/weinimport.py prepare export image-export' mit env WEINSPRECHSTUNDE_DEPLOY_PASSWORD aus secrets; 'npm run build' (working-directory frontend); 'python scripts/weinimport.py deploy' mit env WEINSPRECHSTUNDE_DEPLOY_PASSWORD aus secrets.",
+    "Integrationscheck ausfuehren: 'make -n deploy' zeigt prepare/export/image-export/ng build/deploy in richtiger Reihenfolge; frontend/package.json ist valides JSON; deploy.yml ist valides YAML.",
+    "lokal committen (Makefile, frontend/package.json, .github/workflows/deploy.yml, aktualisierte .agents-Artefakte), NICHT pushen."
+  ],
+  "acceptance_criteria": [
+    "'make -n prepare', 'make -n export', 'make -n image-export' zeigen jeweils genau den entsprechenden weinimport.py-Phasenaufruf.",
+    "'make -n deploy' zeigt die volle Pipeline in der Reihenfolge prepare, export, image-export, ng build, deploy.",
+    "frontend/package.json parst als valides JSON und enthaelt einen prebuild-Script-Eintrag, der die drei Phasen mit && verkettet (Abbruch bei Fehler).",
+    ".github/workflows/deploy.yml parst als valides YAML, triggert auf push main und liest WEINSPRECHSTUNDE_DEPLOY_PASSWORD aus GitHub Secrets."
+  ],
+  "verification": [
+    "make -n deploy",
+    "make -n prepare && make -n export && make -n image-export",
+    ".venv/bin/python -c \"import json; json.load(open('frontend/package.json'))\"",
+    "python3 -c \"import sys,ast\" ; .venv/bin/python -c \"import json,sys; print('package.json ok')\""
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

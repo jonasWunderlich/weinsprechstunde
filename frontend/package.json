@@ -1,0 +1,11 @@
+{
+  "name": "weinsprechstunde-frontend",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Angular SPA Frontend für die Weinsprechstunde. Der prebuild-Schritt führt die Import-Phasen aus, bevor der Angular-Build startet.",
+  "scripts": {
+    "prebuild": "python ../scripts/weinimport.py prepare && python ../scripts/weinimport.py export && python ../scripts/weinimport.py image-export",
+    "build": "ng build",
+    "start": "ng serve"
+  }
+}

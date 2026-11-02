@@ -391,7 +391,10 @@ def phase_prepare(config: Config, schema: list[SchemaField]) -> None:
         elif not data.get("year"):
             sys.stderr.write(f"WARNUNG: {json_file} – kein 'year', Umbenennung übersprungen.\n")
 
-        # 4. scaffold_mode anwenden
+        # 4. Typ-Normalisierung für number-Felder (year, price, rating, …)
+        normalize_number_fields(data, schema, json_file)
+
+        # 5. scaffold_mode anwenden
         apply_scaffold_mode(data, config, schema)
         json_file.write_text(
             json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
@@ -418,6 +421,48 @@ def rename_file_group(json_file: Path, new_stem: str, data: dict) -> None:
         return
     if new_json != json_file:
         json_file.rename(new_json)
+
+def normalize_number_fields(data: dict, schema: list[SchemaField], json_file: Path) -> None:
+    """Felder mit WineSchema-Typ 'number' von String zu Zahl normalisieren.
+
+    - Dezimal-Komma → Dezimalpunkt ("6,99" → "6.99")
+    - decimals == 0 → Integer (year: "2017" → 2017)
+    - decimals == 1 → Float, 1 Nachkommastelle (rating: "6" → 6.0)
+    - decimals == 2 → Float, 2 Nachkommastellen (price: "6,99" → 6.99)
+    Nicht umwandelbare Werte bleiben unverändert und erzeugen eine Warnung.
+    """
+    number_fields = {f.field: f for f in schema if f.type == "number"}
+    for field, spec in number_fields.items():
+        if field not in data:
+            continue
+        value = data[field]
+        if value is None or isinstance(value, (int, float)):
+            # bereits numerisch oder leer → nur ggf. auf decimals runden
+            if isinstance(value, (int, float)):
+                data[field] = _round_to_decimals(value, spec.decimals)
+            continue
+        if not isinstance(value, str) or value.strip() == "":
+            continue
+        raw = value.strip().replace(",", ".")
+        try:
+            parsed = float(raw)
+        except ValueError:
+            sys.stderr.write(
+                f"WARNUNG: {json_file} – Feld '{field}' Wert '{value}' ist keine Zahl, "
+                f"unverändert belassen.\n"
+            )
+            continue
+        data[field] = _round_to_decimals(parsed, spec.decimals)
+
+
+def _round_to_decimals(value: float, decimals: int | None) -> int | float:
+    """Auf die konfigurierte Nachkommastellen-Anzahl normalisieren."""
+    if decimals is None:
+        return value
+    if decimals == 0:
+        return int(round(value))
+    return round(float(value), decimals)
+
 
 def apply_scaffold_mode(data: dict, config: Config, schema: list[SchemaField]) -> None:
     scaffold_fields = get_scaffold_fields(schema)
@@ -1554,6 +1599,7 @@ class SchemaField:
     filter_type: str | None       # "text-search" | "range" | "date-range" | "dropdown" |
                                   # "rating-range" | "multi-select" | null
     default_filter: bool
+    decimals: int | None = None   # nur für type == "number": 0 = int, 1/2 = float-Präzision
 
 @dataclass
 class BackupConfig:
@@ -1654,6 +1700,7 @@ export interface WineSchemaField {
   type: 'text' | 'number' | 'date' | 'rating' | 'multi-value';
   filter_type: FilterType;
   default_filter: boolean;
+  decimals?: number;   // nur für type 'number': 0 = Integer, 1/2 = Float-Präzision
 }
 
 // user-preferences.model.ts

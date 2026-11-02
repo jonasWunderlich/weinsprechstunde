@@ -1,0 +1,7 @@
+{
+  "task_id": "task-weinimport-script",
+  "task_description": "Implementiere das Python Import-Skript fuer das Feature weinliste (Tasks 2-9 + Checkpoint 10): scripts/weinimport.py als phasenbasiertes CLI (backup, prepare, export, image-export, deploy) inkl. Datenmodellen, Hilfsfunktionen, Remote-Import-Download, Zwei-Tier-Backup und Remote-Backups, plus Build-Pipeline (Makefile, frontend/package.json prebuild, GitHub Actions). Mit pytest-Unit-Tests und hypothesis-Property-Tests (Properties 1-9, 18, 20, 21). Maßgeblich ist der Pseudocode in design.md Abschnitt '1. Python Import-Skript'. Fehlermeldungen Req 6.11 und 6.12 WORTWOeRTLICH.",
+  "status": "pending",
+  "feature_order": ["FEAT-001", "FEAT-002"],
+  "blocked_reason": null
+}

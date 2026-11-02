@@ -1,0 +1,19 @@
+# Python-Abhängigkeiten für das Weinsprechstunde Import-Skript (scripts/weinimport.py)
+# Gepinnte Versionen für reproduzierbare Builds.
+
+# Bildskalierung in Phase image-export
+Pillow==13.0.0
+# EXIF-Auslesen für tasting_date in Phase prepare
+piexif==1.1.3
+# SFTP-Verbindung in Phase deploy + Remote-Import-Download
+paramiko==5.1.0
+# Slug-Generierung für Dateinamen
+python-slugify==9.1.3
+# Passwort-Hashing für Wine Editor
+bcrypt==5.0.0
+# Session-Cookie-Signing für Wine Editor
+itsdangerous==2.2.0
+
+# Test-Abhängigkeiten
+pytest==9.2.0
+hypothesis==6.170.14
