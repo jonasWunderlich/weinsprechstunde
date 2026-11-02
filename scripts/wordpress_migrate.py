@@ -760,6 +760,15 @@ def build_parser() -> argparse.ArgumentParser:
             "(Standard: import_dir aus der Config bzw. 'import')."
         ),
     )
+    p_migrate.add_argument(
+        "--force",
+        action="store_true",
+        help=(
+            "Migration erzwingen, auch wenn der Import-Ordner bereits "
+            "Weindaten enthält. Ohne dieses Flag bricht 'migrate' ab, um "
+            "bereits importierte Daten nicht versehentlich zu überschreiben."
+        ),
+    )
     return parser
 
 
@@ -771,7 +780,32 @@ def main(argv: Optional[list[str]] = None) -> None:
         analyze(migrate_dir=args.migrate_dir)
     elif args.command == "migrate":
         import_dir = args.import_dir or _load_import_dir()
+        _guard_already_migrated(import_dir, force=args.force)
         migrate(migrate_dir=args.migrate_dir, import_dir=import_dir)
+
+
+def _guard_already_migrated(import_dir: str, force: bool) -> None:
+    """Schützt bereits importierte Daten vor versehentlichem Überschreiben.
+
+    Die WordPress-Migration ist ein einmaliger Vorgang. Sind im Import-Ordner
+    bereits JSON-Weindateien vorhanden, bricht 'migrate' ab und verlangt das
+    explizite Flag --force. So kann ein versehentlicher erneuter Lauf die
+    bereits erfolgreich importierten (und ggf. nachbearbeiteten) Daten nicht
+    zerstören.
+    """
+    if force:
+        return
+    existing = list(Path(import_dir).rglob("*.json")) if Path(import_dir).exists() else []
+    if existing:
+        sys.stderr.write(
+            f"FEHLER: Der Import-Ordner '{import_dir}' enthält bereits "
+            f"{len(existing)} JSON-Weindatei(en). Die WordPress-Migration ist "
+            f"ein einmaliger Vorgang und wurde offenbar schon durchgeführt.\n"
+            f"Ein erneuter 'migrate'-Lauf würde die vorhandenen Daten "
+            f"überschreiben. Falls das wirklich gewünscht ist, führe den "
+            f"Befehl erneut mit dem Flag --force aus.\n"
+        )
+        sys.exit(1)
 
 
 if __name__ == "__main__":
