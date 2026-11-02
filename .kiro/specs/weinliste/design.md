@@ -4,7 +4,7 @@
 
 „Weinsprechstunde" besteht aus drei voneinander unabhängigen Subsystemen:
 
-1. **Python Import-Skript** (`scripts/weinimport.py`) — ein phasenbasiertes CLI, das JSON-Quelldateien aus dem Import-Ordner aufbereitet, eine fertige `wines.json` exportiert, Bilder skaliert und Artefakte optional auf einen Webserver deployt. Vor der Pipeline kann ein Zwei-Tier-Backup erstellt und bei Bedarf der Import-Ordner per FTP/SFTP vom Webserver heruntergeladen werden.
+1. **Python Import-Skript** (`scripts/weinimport.py`) — ein phasenbasiertes CLI, das JSON-Quelldateien aus dem Import-Ordner aufbereitet, eine fertige `wines.json` exportiert, Bilder skaliert und Artefakte optional per FTPES (FTP mit explizitem TLS) auf einen Webserver deployt. Vor der Pipeline kann ein Zwei-Tier-Backup erstellt und bei Bedarf der Import-Ordner per FTPES vom Webserver heruntergeladen werden.
 2. **Angular SPA Frontend** (`frontend/`) — liest die fertig generierte `wines.json` sowie die zentrale `wine-schema.json` und stellt Weine in Kachel- oder Listenansicht mit dynamischer, schema-gesteuerter Filterkonfiguration dar. Die App hat nur eine Route (`/`); sämtliche Filter liegen im FilterService.
 3. **Wine Editor Web-App** (`editor/`) — eine passwortgeschützte FastAPI-Anwendung mit Vanilla-HTML/JS-Frontend zur komfortablen Pflege der JSON-Quelldateien im Import-Ordner. Nutzt ebenfalls `wine-schema.json` für dynamische Formularfelder.
 
@@ -36,9 +36,10 @@ weinsprechstunde2/
 │   └── images/                      ← skalierte Exportbilder (generiert)
 ├── frontend/                        ← Angular SPA
 │   ├── src/
-│   │   └── assets/
-│   │       ├── wines.json           ← generiert von Phase export
-│   │       └── wine-schema.json     ← Kopie/Symlink von Projekt-Root
+│   │   └── app/                     ← Komponenten/Services (lädt data/ zur Laufzeit)
+│   ├── public/
+│   │   ├── data/  → ../../export/data    ← wines.json + wine-schema.json (Symlink, lokal)
+│   │   └── images/ → ../../export/images ← skalierte Bilder (Symlink, lokal)
 │   └── package.json
 └── editor/                          ← Wine Editor
     ├── main.py                      ← FastAPI Backend
@@ -51,14 +52,14 @@ weinsprechstunde2/
 │                                                                      │
 │  [Phase backup]  ─►  backup/last_*  +  backup/archival_*            │
 │       ↓                                                              │
-│  [optional] Remote-Import-Download (SFTP/FTP)                        │
+│  [optional] Remote-Import-Download (FTPES)                           │
 │       ↓                                                              │
 │  import/                                                             │
 │  ├── wein-a.json  ─┐  [Phase prepare]  ─►  aufbereitete JSON-Dateien │
-│  ├── wein-a.jpg   ─┤  [Phase export]   ─►  frontend/assets/         │
+│  ├── wein-a.jpg   ─┤  [Phase export]   ─►  export/data/             │
 │  └── 2021/        │                          wines.json              │
 │      └── wein-b.json┘  [Phase image-export] ─►  export/images/      │
-│                         [Phase deploy]  ─►  Webserver (FTP/SFTP)    │
+│                         [Phase deploy]  ─►  Webserver (FTPES)       │
 └──────────────────────────────────────────────────────────────────────┘
 
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -90,12 +91,12 @@ weinsprechstunde2/
 graph TD
     A[import/*.json + Bilder] -->|Phase backup| K[backup/last_* + archival_*]
     A -->|Phase prepare| B[aufbereitete JSON-Dateien]
-    B -->|Phase export| C[frontend/assets/wines.json]
+    B -->|Phase export| C[export/data/wines.json]
     B -->|Phase image-export| D[export/images/]
-    C -->|HTTP GET /assets/wines.json| E[Angular SPA]
-    F[wine-schema.json] -->|HTTP GET /assets/wine-schema.json| E
-    D -->|Phase deploy| G[Webserver]
-    C -->|Phase deploy| G
+    C -->|HTTP GET /data/wines.json| E[Angular SPA]
+    F[wine-schema.json] -->|HTTP GET /data/wine-schema.json| E
+    D -->|Phase deploy FTPES| G[Webserver /wine_app]
+    C -->|Phase deploy FTPES| G
     H[editor/static] -->|FastAPI /api/*| I[import/*.json]
     F -->|HTTP GET /api/schema| J[Wine Editor Frontend]
 ```
@@ -110,23 +111,20 @@ graph TD
 {
   "import_dir": "./import",
   "import_source": "local",
-  "export_path": "./frontend/src/assets/wines.json",
+  "export_path": "./export/data/wines.json",
   "scaffold_mode": true,
   "image_export_dir": "./export/images",
   "image_resize_mode": "width",
   "image_resize_px": 1200,
   "deploy": {
-    "protocol": "sftp",
-    "host": "example.com",
-    "user": "myuser",
-    "password": "",
-    "remote_path": "/var/www/html",
-    "remote_images_path": "/var/www/images",
-    "remote_import_path": "/var/www/import"
+    "protocol": "ftpes",
+    "remote_path": "/wine_app",
+    "remote_images_path": "/wine_app/images",
+    "remote_import_path": "/wine_app/data"
   },
   "backup": {
     "backup_dir": "./backup",
-    "remote_backup_dir": "/var/www/backup",
+    "remote_backup_dir": "/backup",
     "max_last_backups": 10,
     "max_archival_backups": 24,
     "archival_interval_days": 30
@@ -137,6 +135,12 @@ graph TD
   }
 }
 ```
+
+> `host`, `user` und `password` stehen **nicht** in der ConfigFile. Sie werden
+> zur Laufzeit aufgelöst: ConfigFile > unversionierte
+> `weinsprechstunde.secrets.json` (Vorlage: `weinsprechstunde.secrets.example.json`)
+> > Umgebungsvariablen `WEINSPRECHSTUNDE_DEPLOY_HOST`/`_USER`/`_PASSWORD`
+> (CI-Fallback). Eine fehlende Secrets-Datei ist kein Fehler.
 
 ### `wine-schema.json`
 
@@ -339,22 +343,13 @@ def download_remote_import(config: Config, password: str) -> None:
     Bei Fehler: lesbarer Fehler mit Serverpfad + Server-Meldung → abbrechen.
     """
     try:
-        if config.deploy.protocol == "sftp":
-            _download_sftp(
-                host=config.deploy.host,
-                user=config.deploy.user,
-                password=password,
-                remote_path=config.deploy.remote_import_path,
-                local_path=Path(config.import_dir),
-            )
-        else:
-            _download_ftp(
-                host=config.deploy.host,
-                user=config.deploy.user,
-                password=password,
-                remote_path=config.deploy.remote_import_path,
-                local_path=Path(config.import_dir),
-            )
+        _download_ftp(
+            host=config.deploy.host,
+            user=config.deploy.user,
+            password=password,
+            remote_path=config.deploy.remote_import_path,
+            local_path=Path(config.import_dir),
+        )
     except Exception as e:
         sys.stderr.write(
             f"FEHLER: Download des Import-Ordners von {config.deploy.host}:"
@@ -556,10 +551,7 @@ def phase_deploy(config: Config) -> None:
     password = resolve_password(config)
 
     try:
-        if config.deploy.protocol == "sftp":
-            _deploy_sftp(config, password)
-        else:
-            _deploy_ftp(config, password)
+        _deploy_ftp(config, password)   # FTPES (FTP_TLS); kein SFTP-Pfad mehr
     except Exception as e:
         sys.stderr.write(
             f"FEHLER: Verbindung zum Server {config.deploy.host} fehlgeschlagen. "
@@ -571,53 +563,54 @@ def phase_deploy(config: Config) -> None:
         sys.exit(1)
 ```
 
+**FTPES-Verbindung** (`_ftps_connect`): Transport ist `ftplib.FTP_TLS`
+(stdlib). Ablauf: `connect(host, 21)` → `auth()` (explizites TLS auf dem
+Kontrollkanal) → `login(user, password)` → `prot_p()` (TLS auf dem Datenkanal)
+→ `set_pasv(True)`. Die Zertifikatsprüfung ist standardmäßig deaktiviert
+(`ssl._create_unverified_context()`), weil der Webspace ein Zertifikat mit
+abweichendem Hostnamen ausliefert; die Verbindung bleibt TLS-verschlüsselt. Mit
+`FTPS_VERIFY=1` wird `ssl.create_default_context()` und damit die reguläre
+Prüfung aktiviert. Da `FTP_TLS` eine Unterklasse von `ftplib.FTP` ist, arbeiten
+die Upload-/Prune-/Download-Helfer (`_upload_ftp`, `_ftp_makedirs`,
+`_ftp_prune`, `_ftp_is_dir`, `_ftp_up_to_date`, `_ftp_download_dir`)
+unverändert auf dem übergebenen Verbindungsobjekt.
+
 Deploy-Logik:
 - **Build-Wurzel**: Nicht `frontend/dist` als Wurzel nehmen, sondern das
   tatsächliche Browser-Build-Verzeichnis auflösen (`_resolve_dist_dir`). Der
   Builder `@angular/build:application` schreibt nach
   `frontend/dist/<projekt>/browser/`; diese Funktion liefert den `browser`-
-  Unterordner, sodass `index.html`/`assets/` direkt unter `remote_path` landen
-  (Req 6.14). Ein klassischer flacher `dist`-Ordner (mit `index.html` direkt in
-  `frontend/dist`) wird unverändert verwendet; Fallback bleibt `frontend/dist`.
-  Identisch für SFTP und FTP.
-- **Pre-Deploy-Backup (serverseitige Kopie)**: Zu Beginn der PhaseDeploy — nach
-  Passwort-Auflösung und Verbindungsaufbau, aber VOR dem Prune — wird der
-  aktuelle Inhalt von `remote_path` **serverseitig** in einen zeitgestempelten
-  Unterordner `<backup.remote_backup_dir>/predeploy-<YYYYmmdd-HHMMSS>/` kopiert.
-  Die Daten bleiben auf dem Server und laufen NICHT über den lokalen Rechner;
-  es wird nichts in den lokalen `backup.backup_dir` geladen. Bei SFTP geschieht
-  die rekursive Kopie per SSH-Exec (`cp -a`) über denselben paramiko-Transport
-  (`_predeploy_server_backup_sftp` → `_ssh_exec`), da SFTP keinen nativen
-  rekursiven Server-Copy kennt. Bei FTP wird die serverseitige Kopie per
-  `SITE CPFR`/`SITE CPTO` (z. B. ProFTPD `mod_copy`) rekursiv ausgeführt
-  (`_predeploy_server_backup_ftp` → `_ftp_server_copy_dir`); unterstützt der
-  FTP-Server keine serverseitige Kopie, schlägt der Befehl fehl und das Backup
-  bricht fail-closed ab. So liegt ein Snapshot des Serverzustands auf dem
-  Server vor, bevor der Prune etwas löscht (Req 6.15). Ein leerer Server erzeugt
-  nur einen leeren Backup-Ordner und ist kein Fehler (Req 6.16). Schlägt das
-  Backup grundsätzlich fehl (Exec-/Verbindungsfehler oder fehlende
-  `backup`/`remote_backup_dir`-Konfiguration), wird eine `PreDeployBackupError`
-  geworfen; `phase_deploy` fängt diese ab und bricht mit einer **eigenen**
-  Meldung ab („Pre-Deploy-Backup … fehlgeschlagen … Prune übersprungen"), NICHT
-  mit der generischen Verbindungsfehler-Meldung — der Prune läuft dann nicht
-  (Req 6.16, 6.17). Dieses Backup ist getrennt vom Import-Backup-Mechanismus
-  (`_remote_backup`/`phase_backup`) und lässt diesen unberührt.
-- **Retention Pre-Deploy-Backup**: Nach dem Anlegen des neuen Ordners werden
-  **serverseitig** die ältesten `predeploy-`Ordner unter `remote_backup_dir`
-  entfernt (`_prune_predeploy_backups_server` per `rm -rf` über SSH-Exec bzw.
-  `_prune_predeploy_backups_server_ftp` per rekursivem FTP-Delete), sodass
-  maximal `MAX_PREDEPLOY_BACKUPS` (Standard 5) erhalten bleiben — unabhängig von
-  `max_last_backups`/`max_archival_backups`. Ein optionales Config-Feld
-  `backup.max_predeploy_backups` überschreibt den Default, funktioniert aber
-  ohne Config-Änderung mit 5 (Req 6.18).
-- **SFTP und FTP identisch im Verhalten**: Beide Protokolle legen serverseitig
-  ein zeitgestempeltes Pre-Deploy-Backup an und halten max. 5 Stück; nur der
-  verwendete Mechanismus unterscheidet sich (SSH-Exec `cp -a` vs.
-  `SITE CPFR`/`CPTO`) (Req 6.18).
-- Angular-dist-Ordner: veraltete Serverdateien löschen (via SFTP `listdir` / FTP `NLST`)
-- `wines.json` und Bilder aus `image_export_dir`: **niemals** auf dem Server löschen
-- Timestamp-Vergleich: SFTP via `stat().st_mtime`, FTP via `MDTM`
-- Zugangsdaten ausschließlich über Umgebungsvariablen — niemals im Klartext in Config
+  Unterordner, sodass `index.html`/Build-Dateien direkt unter `remote_path`
+  (`/wine_app`) landen (Req 6.14). Ein klassischer flacher `dist`-Ordner (mit
+  `index.html` direkt in `frontend/dist`) wird unverändert verwendet; Fallback
+  bleibt `frontend/dist`.
+- **Kein Pre-Deploy-Backup**: Es wird KEIN automatisches Pre-Deploy-Backup mehr
+  erstellt (der Ziel-Webspace unterstützt keine serverseitige Kopie, und der
+  Nutzer will den Live-Stand beim Deploy bewusst überschreiben). Der Inhalt von
+  `/wine_app` wird überschrieben; der bestehende Import-Backup-Mechanismus
+  (`_remote_backup`/`phase_backup`) bleibt davon unberührt.
+- **Deploy-Reihenfolge**: Upload des Build-Outputs → Prune (nur unter
+  `/wine_app`) → `wines.json`/`wine-schema.json` nach `remote_import_path`
+  (`/wine_app/data`) → Bilder nach `remote_images_path` (`/wine_app/images`).
+- **Prune-Scope & Schutz**: Der Prune löscht veraltete Serverdateien
+  ausschließlich unterhalb von `remote_path` (`/wine_app`) und berührt den
+  Web-Root (inkl. Root-`.htaccess`, siehe `deploy/htaccess-webroot.txt`) nie.
+  `_protected_prefixes(config)` schützt zusätzlich die Präfixe `images/` und
+  `data/` sowie die WineDataAsset (`wines.json`) exakt, sodass laufzeitgeladene
+  Daten/Bilder beim Prune nie gelöscht werden (Req 6.6).
+- Timestamp-Vergleich: FTP via `MDTM`.
+- Zugangsdaten (`host`/`user`/`password`) werden nie im Klartext in der Config
+  gehalten, sondern über Secrets-Datei/Umgebungsvariablen aufgelöst (Req 6.13).
+
+**Transparenter Root-Rewrite & base-href**: Die App liegt physisch unter
+`/wine_app`, ist aber unter `https://weinsprechstunde.de/` erreichbar. Ein
+manuell eingerichtetes Root-`.htaccess` (versioniert in
+`deploy/htaccess-webroot.txt`, NICHT vom Deploy verwaltet) schreibt alle
+Requests intern nach `/wine_app/` um, ohne die sichtbare URL zu ändern (kein
+`R=`-Redirect; SPA-Fallback auf `/wine_app/index.html`). Dazu bleibt
+`<base href="/">`, sodass die App ihre Assets als `/data/...`, `/images/...`
+und gehashte Build-Dateien anfragt, die der Rewrite 1:1 auf `/wine_app/...`
+mappt.
 
 ---
 
@@ -653,6 +646,8 @@ jobs:
 
       - name: Run import pipeline
         env:
+          WEINSPRECHSTUNDE_DEPLOY_HOST: ${{ secrets.WEINSPRECHSTUNDE_DEPLOY_HOST }}
+          WEINSPRECHSTUNDE_DEPLOY_USER: ${{ secrets.WEINSPRECHSTUNDE_DEPLOY_USER }}
           WEINSPRECHSTUNDE_DEPLOY_PASSWORD: ${{ secrets.WEINSPRECHSTUNDE_DEPLOY_PASSWORD }}
         run: python scripts/weinimport.py prepare export image-export
 
@@ -662,11 +657,13 @@ jobs:
 
       - name: Deploy to server
         env:
+          WEINSPRECHSTUNDE_DEPLOY_HOST: ${{ secrets.WEINSPRECHSTUNDE_DEPLOY_HOST }}
+          WEINSPRECHSTUNDE_DEPLOY_USER: ${{ secrets.WEINSPRECHSTUNDE_DEPLOY_USER }}
           WEINSPRECHSTUNDE_DEPLOY_PASSWORD: ${{ secrets.WEINSPRECHSTUNDE_DEPLOY_PASSWORD }}
         run: python scripts/weinimport.py deploy
 ```
 
-> Wenn `import_source = "remote"`: Das Import-Skript lädt den Import-Ordner beim Start von `prepare` automatisch via FTP/SFTP herunter, bevor Phase prepare beginnt. Der CI-Workflow bleibt gleich.
+> Wenn `import_source = "remote"`: Das Import-Skript lädt den Import-Ordner beim Start von `prepare` automatisch via FTPES herunter, bevor Phase prepare beginnt. Der CI-Workflow bleibt gleich. Host, Benutzer und Passwort stammen aus GitHub Secrets (`WEINSPRECHSTUNDE_DEPLOY_HOST`/`_USER`/`_PASSWORD`).
 
 **Python-Bibliotheken (`scripts/requirements.txt`):**
 
@@ -674,8 +671,8 @@ jobs:
 |---|---|
 | `Pillow` | Bildskalierung in Phase image-export |
 | `piexif` | EXIF-Auslesen für tasting_date |
-| `paramiko` | SFTP-Verbindung in Phase deploy + Remote-Download |
-| `ftplib` (stdlib) | FTP-Verbindung in Phase deploy + Remote-Download |
+| `ftplib` (stdlib) | FTPES-Verbindung (`FTP_TLS`) in Phase deploy + Remote-Download |
+| `ssl` (stdlib) | TLS-Kontext für FTPES (Zertifikatsprüfung optional via `FTPS_VERIFY`) |
 | `python-slugify` | Slug-Generierung für Dateinamen |
 | `dataclasses` (stdlib) | Datenmodelle |
 | `argparse` (stdlib) | CLI-Einstiegspunkt |
@@ -726,7 +723,7 @@ WineDetailDialogComponent (modal, festes Template in Gruppen)
 #### Services
 
 ```typescript
-// WineDataService — lädt wines.json und wine-schema.json einmalig, parallel
+// WineDataService — lädt data/wines.json und data/wine-schema.json einmalig, parallel
 @Injectable({ providedIn: 'root' })
 export class WineDataService {
   private readonly http = inject(HttpClient);
@@ -739,8 +736,8 @@ export class WineDataService {
     if (this.loadState() !== 'idle') return;
     this.loadState.set('loading');
     forkJoin({
-      wines:  this.http.get<Wine[]>('/assets/wines.json'),
-      schema: this.http.get<WineSchemaField[]>('/assets/wine-schema.json'),
+      wines:  this.http.get<Wine[]>('data/wines.json'),
+      schema: this.http.get<WineSchemaField[]>('data/wine-schema.json'),
     }).pipe(
       catchError(() => { this.loadState.set('error'); return EMPTY; })
     ).subscribe(({ wines, schema }) => {
@@ -1711,13 +1708,15 @@ class BackupConfig:
 
 @dataclass
 class DeployConfig:
-    protocol: str                 # "ftp" | "sftp"
-    host: str
-    user: str
-    password: str
+    protocol: str                 # "ftpes"
     remote_path: str
     remote_images_path: str
     remote_import_path: str
+    # host/user/password NICHT in der Config — zur Laufzeit aufgelöst
+    # (Config > weinsprechstunde.secrets.json > Env _HOST/_USER/_PASSWORD).
+    host: str = ""
+    user: str = ""
+    password: str = ""
 
 @dataclass
 class EditorConfig:
