@@ -156,15 +156,15 @@ Die Anwendung richtet sich sowohl an Weinkenner (Autoren Toni und Simone sowie G
 
 ### Requirement 5: Build-Pipeline
 
-**User Story:** Als Entwickler möchte ich, dass der Angular-Build automatisch das Import-Skript ausführt, damit die `wines.json` und die exportierten Bilder immer aktuell sind, wenn ich die App baue.
+**User Story:** Als Entwickler möchte ich, dass das Angular-Frontend unabhängig von der Import-Logik gebaut werden kann, damit ein Frontend-Build die Importdaten nicht erneut verarbeitet und die Daten unabhängig vom Frontend gepflegt werden können.
 
 #### Acceptance Criteria
 
-1. THE App SHALL in der Datei `package.json` einen `prebuild`-Script-Eintrag enthalten, der alle drei Skript-Phasen (PhasePreparate, dann PhaseExport, dann PhaseImageExport) sequenziell ausführt, bevor der Angular-Build startet.
+1. THE App SHALL den Angular-Build (`npm run build` / `ng build`) OHNE Kopplung an das Import-Skript ausführen. Der Build SHALL KEINEN `prebuild`-Schritt enthalten, der Import-Phasen ausführt; das Frontend ist unabhängig von der Import-Logik.
 2. THE App SHALL ein `Makefile` oder `build.sh` enthalten, das die PhasePreparate, die PhaseExport und die PhaseImageExport auch einzeln und unabhängig voneinander aufrufbar macht.
-3. THE App SHALL ein `Makefile` oder `build.sh` enthalten, das einen `deploy`-Befehl bereitstellt, der die vollständige Pipeline ausführt: PhasePreparate, PhaseExport, PhaseImageExport, Angular-Build (`ng build`) und anschließend PhaseDeploy.
+3. THE App SHALL ein `Makefile` oder `build.sh` enthalten, das einen `deploy`-Befehl bereitstellt, der die vollständige Pipeline ausführt: PhasePreparate, PhaseExport, PhaseImageExport, Angular-Build (`npm run build`) und anschließend PhaseDeploy. Die Import-Phasen werden dabei vom Makefile ausgelöst, NICHT vom Angular-Build.
 4. THE ImportScript SHALL alle drei Phasen (PhasePreparate, PhaseExport, PhaseImageExport) sequenziell ausführen, wenn es ohne Phasen-Argument aufgerufen wird (`python script.py`).
-5. WHEN das ImportScript als Teil des `prebuild`-Schritts fehlschlägt, THEN THE App SHALL den Angular-Build-Prozess abbrechen.
+5. WHEN eine Import-Phase in der Makefile- bzw. CI-Pipeline fehlschlägt, THEN THE Pipeline SHALL abbrechen, bevor der Angular-Build bzw. das Deployment ausgeführt wird.
 6. THE App SHALL eine GitHub Actions Workflow-Datei (`.github/workflows/deploy.yml`) enthalten, die bei einem Push auf den `main`-Branch automatisch die vollständige Pipeline ausführt. WHEN `import_source` in der ConfigFile den Wert `"remote"` hat, SHALL der Workflow den Import-Ordner per FTPES vom Webserver herunterladen, bevor die Import-Phasen ausgeführt werden. Host, Benutzer und Deploy-Passwort SHALL der Workflow aus GitHub Secrets als Umgebungsvariablen (`WEINSPRECHSTUNDE_DEPLOY_HOST`/`_USER`/`_PASSWORD`) lesen.
 
 ### Requirement 6: Import-Skript – Phase deploy

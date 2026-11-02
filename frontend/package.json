@@ -2,10 +2,9 @@
   "name": "weinsprechstunde-frontend",
   "version": "0.0.0",
   "private": true,
-  "description": "Angular SPA Frontend für die Weinsprechstunde. Der prebuild-Schritt führt die Import-Phasen aus, bevor der Angular-Build startet.",
+  "description": "Angular SPA Frontend für die Weinsprechstunde. Unabhängig von der Import-Logik; die Import-Phasen werden separat über das Makefile bzw. die CI ausgeführt.",
   "packageManager": "npm@11.16.0",
   "scripts": {
-    "prebuild": "node scripts/run-import.mjs prepare export image-export",
     "ng": "ng",
     "start": "ng serve",
     "build": "ng build",
