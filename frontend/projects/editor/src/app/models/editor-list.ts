@@ -116,19 +116,26 @@ export function buildEditorList(
 ): EditorListItem[] {
   // 1. Angelegte Weine (sofern der Eintragstyp sie zulässt). Reihenfolge von
   //    `filteredWines` respektieren (= geteilte Sortierung des FilterService).
+  //    Bei `created-without-image` werden nur Weine ohne gesetztes `image`-Feld gezeigt.
   const created: CreatedListItem[] = [];
-  if (entryType !== 'unknown') {
+  const showsCreated = entryType !== 'unknown';
+  if (showsCreated) {
+    const onlyImageless = entryType === 'created-without-image';
     const byWine = new Map<Wine, WineEntry>();
     for (const e of createdEntries) if (e.wine) byWine.set(e.wine, e);
     for (const w of filteredWines) {
       const entry = byWine.get(w);
-      if (entry) created.push(toCreatedListItem(entry));
+      if (!entry) continue;
+      if (onlyImageless && isPresent(w.image)) continue;
+      created.push(toCreatedListItem(entry));
     }
   }
 
-  // 2. Unbekannte Weine (nur ungenutzte Bilder), sofern der Eintragstyp sie zulässt.
+  // 2. Unbekannte Weine (nur ungenutzte Bilder), nur bei `all` oder `unknown`.
+  //    Die „angelegt"-Typen (`created`, `created-without-image`) zeigen keine Bilder.
   const unknown: UnknownListItem[] = [];
-  if (entryType !== 'created') {
+  const showsUnknown = entryType === 'all' || entryType === 'unknown';
+  if (showsUnknown) {
     for (const img of images) {
       if (!img.assigned) unknown.push(toUnknownListItem(img));
     }

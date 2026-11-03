@@ -22,6 +22,7 @@ import {
 } from '../../models/wine-field-conversion';
 import { CreatedListItem } from '../../models/editor-list.model';
 import { ImagePickerComponent } from '../image-picker/image-picker';
+import { EntryThumbnailComponent } from '../entry-thumbnail/entry-thumbnail';
 
 /**
  * Art des Eingabefeldes, das aus einem WineSchema-Feld abgeleitet wird (Req 17.16–17.19).
@@ -62,7 +63,7 @@ interface EditorField {
 @Component({
   selector: 'app-wine-editor',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ImagePickerComponent],
+  imports: [ImagePickerComponent, EntryThumbnailComponent],
   providers: [EditorSaveService],
   templateUrl: './wine-editor.html',
   styleUrl: './wine-editor.scss',
@@ -85,6 +86,22 @@ export class WineEditorComponent {
     return null;
   });
 
+  /**
+   * `true`, wenn ein unbekannter Wein als Entwurf geöffnet ist (Bild ohne JSON). Dann
+   * zeigt der Editor das vollständige Formular, schreibt aber nichts, solange kein Name
+   * eingetragen ist (neuer Flow).
+   */
+  readonly isDraft = this.state.isDraftSelected;
+
+  /** Das Bild des aktuell geöffneten Entwurfs (oder `null`). */
+  readonly draftImage = this.state.draftImage;
+
+  /**
+   * `true`, wenn ein editierbares Formular angezeigt werden soll: entweder ein gültiger
+   * angelegter Eintrag oder ein Entwurf (unbekannter Wein).
+   */
+  readonly editing = computed<boolean>(() => this.created() !== null || this.isDraft());
+
   /** Lokaler, editierbarer Arbeitsstand der Feldwerte (als String bzw. Chips-Array). */
   private readonly values = signal<Record<string, string | string[]>>({});
 
@@ -102,18 +119,18 @@ export class WineEditorComponent {
     return schema.map((f) => this.toField(f, wines));
   });
 
-  /** `true`, wenn der Eintrag kein nicht-leeres `name`-Feld hat (Req 17.20). */
+  /** `true`, wenn der Eintrag/Entwurf kein nicht-leeres `name`-Feld hat (Req 17.20). */
   readonly incomplete = computed(() => {
+    if (this.isDraft()) return !isPresent(this.values()['name']);
     const item = this.created();
     return item ? item.incomplete : false;
   });
 
   /**
-   * `true`, wenn der aktuell geöffnete Eintrag der per Bildklick angelegte vorläufige
-   * Eintrag ist. Nur dann bietet das `name`-Feld die zwei Eingabewege und das Autocomplete
-   * bildloser Einträge (Req 17.38/17.39).
+   * Alias für {@link isDraft}: nur im Entwurfsmodus bietet das `name`-Feld die zwei
+   * Eingabewege und das Autocomplete bildloser Einträge (Req 17.38/17.39/17.40/17.41).
    */
-  readonly isProvisional = this.state.isProvisionalSelected;
+  readonly isProvisional = this.state.isDraftSelected;
 
   /** from-image-Fehleranzeige (Req 17.43). */
   readonly fromImageError = this.state.fromImageError;
@@ -138,6 +155,14 @@ export class WineEditorComponent {
     // geladenen Werten befüllen (Req 17.9). Defekte JSONs sind nicht auswählbar, daher
     // erreicht uns hier immer ein gültiges Wine-Objekt.
     effect(() => {
+      // Entwurf (unbekannter Wein): vollständiges Formular, vorbefüllt mit Bild und
+      // (asynchron geladenem) EXIF-Datum; es wird nichts geschrieben, bis ein Name da ist.
+      if (this.isDraft()) {
+        const img = this.draftImage();
+        const date = this.state.draftTastingDate();
+        this.loadDraft(img ? img.name : '', date);
+        return;
+      }
       const item = this.created();
       if (!item || !item.wine) {
         this.values.set({});
@@ -172,6 +197,25 @@ export class WineEditorComponent {
       value: this.stringifyExtra(wine[key]),
     }));
     this.extraFields.set(extras);
+  }
+
+  /**
+   * Befüllt das Formular für einen Entwurf (unbekannter Wein, noch keine JSON): alle
+   * Schema-Felder leer, außer `image` (Bild-Dateiname) und `tasting_date` (EXIF/Dateidatum).
+   * Der Save-Service wird NICHT initialisiert — es wird erst geschrieben, wenn ein Name
+   * eingetragen wird (siehe {@link onProvisionalNameInput}).
+   */
+  private loadDraft(imageName: string, tastingDate: string | null): void {
+    const schema = this.wineData.schema();
+    const next: Record<string, string | string[]> = {};
+    for (const f of schema) {
+      if (f.field === 'grape') next[f.field] = [];
+      else if (f.field === 'image') next[f.field] = imageName;
+      else if (f.field === 'tasting_date') next[f.field] = tastingDate ?? '';
+      else next[f.field] = '';
+    }
+    this.values.set(next);
+    this.extraFields.set([]);
   }
 
   private stringifyExtra(v: unknown): string {
@@ -219,6 +263,15 @@ export class WineEditorComponent {
     return `wine-editor-list-${field}`;
   }
 
+  /**
+   * `true`, wenn ein Feld im Entwurfsmodus gesperrt ist: Solange noch keine JSON existiert,
+   * sind alle Felder außer `name` readonly/disabled. Erst nach dem Anlegen (Name gesetzt
+   * + Button) sind sie editierbar.
+   */
+  isFieldLocked(field: string): boolean {
+    return this.isDraft() && field !== 'name';
+  }
+
   // ── Eingabe-Handler ────────────────────────────────────────────────────────
 
   /**
@@ -228,31 +281,79 @@ export class WineEditorComponent {
    */
   onInput(field: EditorField, raw: string): void {
     this.values.update((v) => ({ ...v, [field.schema.field]: raw }));
+    // Im Entwurfsmodus nur lokal halten — es gibt noch keine JSON (wird beim Namen angelegt).
+    if (this.isDraft()) return;
     const value = this.convertForSave(field, raw);
     this.save.scheduleFieldSave(field.schema.field, value);
   }
 
   /**
-   * Behandelt die Eingabe im `name`-Feld eines per Bildklick angelegten Eintrags
-   * (Req 17.39/17.40/17.41). Genau zwei Wege:
+   * Behandelt die Eingabe im `name`-Feld eines Entwurfs. Tippen legt NICHTS an und löst
+   * KEIN Verknüpfen aus — der Wert wird nur lokal gehalten (und per Autocomplete
+   * ergänzt). Das Anlegen passiert erst manuell über {@link commitDraftManually}
+   * (Button), wenn ein Name eingetragen ist.
    *
-   * - **Auswahl eines bestehenden bildlosen Eintrags** (der Wert entspricht exakt dem
-   *   Namen genau eines Autocomplete-Vorschlags): verknüpfen (link-image) — die vorläufige
-   *   JSON wird entfernt, das `image`-Feld des bestehenden Eintrags gesetzt und fortan
-   *   dieser Eintrag bearbeitet (Req 17.41).
-   * - **Eigener neuer Name** (kein exakter Vorschlag): den vorläufigen Eintrag behalten
-   *   und sein `name`-Feld setzen (Req 17.40) — über den normalen Auto-Save-Weg.
+   * Für einen regulären angelegten Eintrag (kein Entwurf) verhält sich das Namensfeld wie
+   * jedes andere Feld (normaler Auto-Save).
    */
   onProvisionalNameInput(field: EditorField, raw: string): void {
-    const trimmed = raw.trim();
-    const matches = this.imagelessSuggestions().filter((s) => s.name === trimmed);
-    if (trimmed !== '' && matches.length === 1) {
-      // Weg 2: bestehenden bildlosen Eintrag verknüpfen.
-      void this.state.linkToExisting(matches[0].path);
+    if (this.isDraft()) {
+      // Entwurf: nur lokal halten, nichts anlegen/verknüpfen.
+      this.values.update((v) => ({ ...v, [field.schema.field]: raw }));
       return;
     }
-    // Weg 1: eigener neuer Name — vorläufigen Eintrag behalten, name setzen.
     this.onInput(field, raw);
+  }
+
+  /**
+   * `true`, wenn ein Entwurf mit nicht-leerem Namen vorliegt — nur dann ist das manuelle
+   * Anlegen über {@link commitDraftManually} möglich.
+   */
+  readonly canCreateDraft = computed<boolean>(
+    () => this.isDraft() && isPresent(this.values()['name']),
+  );
+
+  /**
+   * Legt den Entwurf manuell an (Button „Wein anlegen"). Deckt beide Wege ab:
+   * entspricht der eingegebene Name exakt einem bestehenden bildlosen Wein, wird das Bild
+   * mit diesem verknüpft (link-image); andernfalls wird eine neue JSON angelegt. Erst
+   * dieser Aufruf schreibt — das Tippen tut es nicht.
+   */
+  async commitDraftManually(): Promise<void> {
+    const image = this.draftImage();
+    const name = this.value('name').trim();
+    if (!image || name === '') return;
+
+    const matches = this.imagelessSuggestions().filter((s) => s.name === name);
+    if (matches.length === 1) {
+      await this.state.linkDraftToExisting(image, matches[0].path);
+      return;
+    }
+    await this.state.commitDraft(image, this.draftWineFromForm(name));
+  }
+
+  /**
+   * Baut aus dem aktuellen Formularstand den anzulegenden Wein eines Entwurfs: alle
+   * Schema-Felder typkonvertiert (number/rating), `grape` als Array, leere Textfelder
+   * weggelassen; `name` wird gesetzt. `image`/`tasting_date` stammen aus der Vorbefüllung.
+   */
+  private draftWineFromForm(name: string): Wine {
+    const wine: Record<string, unknown> = {};
+    for (const f of this.fields()) {
+      const key = f.schema.field;
+      if (key === 'name') continue;
+      const raw = this.values()[key];
+      if (f.kind === 'chips') {
+        const arr = Array.isArray(raw) ? raw : parseGrapeTags(typeof raw === 'string' ? raw : '');
+        if (arr.length > 0) wine[key] = arr;
+        continue;
+      }
+      const converted = this.convertForSave(f, typeof raw === 'string' ? raw : '');
+      // null = leeres Feld (weglassen), undefined = nicht konvertierbar (weglassen).
+      if (converted !== null && converted !== undefined) wine[key] = converted;
+    }
+    wine['name'] = name;
+    return wine as Wine;
   }
 
   /** Fügt einen Grape-Tag hinzu (Req 17.18) und speichert das Array sofort. */
@@ -263,6 +364,7 @@ export class WineEditorComponent {
     if (current.includes(tag)) return;
     const next = [...current, tag];
     this.values.update((v) => ({ ...v, [field]: next }));
+    if (this.isDraft()) return;
     this.save.scheduleFieldSave(field, next);
   }
 
@@ -270,6 +372,7 @@ export class WineEditorComponent {
   removeChip(field: string, tag: string): void {
     const next = this.chips(field).filter((t) => t !== tag);
     this.values.update((v) => ({ ...v, [field]: next }));
+    if (this.isDraft()) return;
     this.save.scheduleFieldSave(field, next);
   }
 
@@ -302,12 +405,14 @@ export class WineEditorComponent {
   /** Übernimmt den Dateinamen der ausgewählten Mediendatei in das Feld (Req 17.19/17.35). */
   pickMedia(field: string, entry: MediaEntry): void {
     this.values.update((v) => ({ ...v, [field]: entry.name }));
+    if (this.isDraft()) return;
     this.save.scheduleFieldSave(field, entry.name);
   }
 
   /** Entfernt die Medien-Zuordnung eines Feldes. */
   clearMedia(field: string): void {
     this.values.update((v) => ({ ...v, [field]: '' }));
+    if (this.isDraft()) return;
     this.save.scheduleFieldSave(field, null);
   }
 
@@ -317,19 +422,70 @@ export class WineEditorComponent {
   readonly images = this.state.images;
 
   /**
+   * Relativer Pfad des Bildes des aktuell gepflegten Eintrags für die große
+   * Bildvorschau im WineEditor-Kopf. Für unbekannte Weine das Bild selbst; für
+   * angelegte Weine das im `image`-Feld referenzierte Bild (live aus dem Formular,
+   * damit die Vorschau direkt nach einer Bildauswahl aktualisiert), aufgelöst im
+   * Verzeichnis der JSON-Quelldatei. `null`, wenn kein Bild gesetzt ist.
+   */
+  readonly previewPath = computed<string | null>(() => {
+    const item = this.state.selectedItem();
+    if (!item) return null;
+    if (item.kind === 'unknown') return item.image.path;
+    const image = this.value('image');
+    if (!isPresent(image)) return null;
+    return [...item.entry.dirSegments, image].join('/');
+  });
+
+  /**
    * Übernimmt den Dateinamen (ohne Pfad) des im ImagePicker gewählten Bildes in das
    * `image`-Feld und speichert über denselben Auto-Save-Weg wie die übrigen Felder
    * (Req 17.34/17.35).
    */
   pickImage(name: string): void {
     this.values.update((v) => ({ ...v, image: name }));
+    if (this.isDraft()) return;
     this.save.scheduleFieldSave('image', name);
   }
 
   /** Entfernt die Bild-Zuordnung des `image`-Feldes. */
   clearImage(): void {
     this.values.update((v) => ({ ...v, image: '' }));
+    if (this.isDraft()) return;
     this.save.scheduleFieldSave('image', null);
+  }
+
+  // ── Bildauswahl-Dialog (Req 17.28–17.35) ───────────────────────────────────
+
+  /** Ob der große Bildauswahl-Dialog geöffnet ist. */
+  private readonly _imagePickerOpen = signal(false);
+  readonly imagePickerOpen = this._imagePickerOpen.asReadonly();
+
+  /**
+   * Titel des Bildauswahl-Dialogs: der Name des gerade gepflegten Weins, damit sich das
+   * Etikett auf der Flasche mit dem Eintrag abgleichen lässt. Ohne Namen ein neutraler
+   * Platzhalter.
+   */
+  readonly imagePickerTitle = computed<string>(() => {
+    const item = this.created();
+    const name = item?.wine?.name;
+    return isPresent(name) ? String(name) : '(ohne Namen)';
+  });
+
+  /** Öffnet den großen Bildauswahl-Dialog („Bild ergänzen" / „Bild ersetzen"). */
+  openImagePicker(): void {
+    this._imagePickerOpen.set(true);
+  }
+
+  /** Schließt den Bildauswahl-Dialog ohne Änderung. */
+  closeImagePicker(): void {
+    this._imagePickerOpen.set(false);
+  }
+
+  /** Übernimmt die Auswahl aus dem Dialog und schließt ihn (Req 17.34/17.35). */
+  onPickImageFromDialog(name: string): void {
+    this.pickImage(name);
+    this._imagePickerOpen.set(false);
   }
 
   // ── Konfliktbestätigung (Req 17.25) ────────────────────────────────────────

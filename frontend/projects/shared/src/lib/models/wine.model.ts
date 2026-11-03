@@ -62,5 +62,7 @@ export type SortOption =
   | 'tasting_date_asc'
   | 'rating_desc'
   | 'price_desc'
-  | 'price_asc';
+  | 'price_asc'
+  | 'name_asc'
+  | 'name_desc';
 export type LoadState = 'idle' | 'loading' | 'loaded' | 'error';

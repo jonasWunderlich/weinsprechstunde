@@ -56,7 +56,12 @@
             [attr.data-testid]="'image-picker-select-' + img.name"
             [title]="img.name"
           >
-            <app-entry-thumbnail [path]="img.path" [alt]="img.name" />
+            <app-entry-thumbnail
+              [path]="img.path"
+              [alt]="img.name"
+              [large]="large()"
+              [maxSize]="large() ? 480 : 256"
+            />
             <span class="image-picker__name">{{ img.name }}</span>
             @if (img.assigned) {
               <span class="image-picker__badge" title="Bereits zugeordnet">genutzt</span>

@@ -1,4 +1,12 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  Injector,
+  afterNextRender,
+  effect,
+  inject,
+} from '@angular/core';
 import { isPresent } from '@weinsprechstunde/shared';
 import { EditorStateService } from '../../services/editor-state.service';
 import { EditorListItem } from '../../models/editor-list.model';
@@ -19,6 +27,26 @@ import { EntryThumbnailComponent } from '../entry-thumbnail/entry-thumbnail';
 })
 export class EditorListComponent {
   readonly state = inject(EditorStateService);
+  private readonly host = inject(ElementRef<HTMLElement>);
+  private readonly injector = inject(Injector);
+
+  constructor() {
+    // Bei Auswahlwechsel (z. B. per Pfeiltasten) den gewählten Eintrag in den sichtbaren
+    // Bereich scrollen, falls er außerhalb liegt.
+    effect(() => {
+      const id = this.state.selectedId();
+      if (id === null) return;
+      afterNextRender(
+        () => {
+          const el = (this.host.nativeElement as HTMLElement).querySelector(
+            '.editor-list__item--selected',
+          );
+          el?.scrollIntoView({ block: 'nearest' });
+        },
+        { injector: this.injector },
+      );
+    });
+  }
 
   isSelected(item: EditorListItem): boolean {
     return this.state.selectedId() === item.id;
@@ -29,14 +57,15 @@ export class EditorListComponent {
   }
 
   /**
-   * Klick auf das Bild eines unbekannten Weins: legt per File System Access API eine
-   * vorläufige JSON an und öffnet den WineEditor für den neuen Eintrag (Req 17.36).
-   * Für angelegte Weine wählt ein Klick auf das Bild schlicht den Eintrag aus.
+   * Klick auf das Bild eines unbekannten Weins: wählt den Eintrag als Entwurf aus und
+   * öffnet das vollständige Formular rechts (Req 17.36). Es wird noch KEINE JSON angelegt
+   * — das geschieht erst, sobald ein Name eingetragen wird. Für angelegte Weine wählt ein
+   * Klick auf das Bild ebenfalls schlicht den Eintrag aus.
    */
   onImageClick(item: EditorListItem, event: Event): void {
     if (item.kind === 'unknown') {
       event.stopPropagation();
-      void this.state.createFromImage(item.image);
+      this.state.select(item);
     }
   }
 

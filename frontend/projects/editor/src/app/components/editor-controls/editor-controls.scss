@@ -1,3 +1,8 @@
+// Fixe Kopfzeile der linken Spalte; schrumpft nicht und scrollt nicht mit der Liste.
+:host {
+  flex: 0 0 auto;
+}
+
 .editor-controls {
   display: flex;
   flex-wrap: wrap;

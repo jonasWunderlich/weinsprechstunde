@@ -3,44 +3,28 @@
 <div class="wine-editor">
   @if (!item) {
     <p class="wine-editor__empty">Wähle links einen Eintrag aus, um ihn hier zu bearbeiten.</p>
-  } @else if (item.kind === 'unknown') {
+  } @else if (item.kind === 'created' && item.broken) {
     <header class="wine-editor__header">
-      <h2 class="wine-editor__title wine-editor__title--placeholder">{{ item.placeholder }}</h2>
-      @if (item.sortDate) {
-        <span class="wine-editor__date">{{ item.sortDate }}</span>
-      }
+      <h2 class="wine-editor__title wine-editor__title--placeholder">Fehlerhafter Eintrag</h2>
     </header>
     <p class="wine-editor__note">
-      Unbekannter Wein (Bild ohne JSON). Klick auf das Bild in der Liste legt einen neuen
-      Eintrag an.
+      Die JSON-Datei konnte nicht gelesen werden und ist nicht bearbeitbar.
     </p>
-    @if (fromImageError(); as err) {
-      <div class="wine-editor__status wine-editor__status--error" role="alert" data-testid="from-image-error">
-        {{ err }}
-      </div>
-    }
-    @if (archiveError(); as err) {
-      <div class="wine-editor__status wine-editor__status--error" role="alert" data-testid="archive-error">
-        {{ err }}
-      </div>
-    }
-    <p class="wine-editor__file">Bild: {{ item.image.path }}</p>
-
-    <!-- Ungenutztes Bild archivieren (kein Löschen, Req 17.44/17.46) -->
-    <div class="wine-editor__archive">
-      <button type="button" (click)="archiveImage()" data-testid="archive-image">
-        Bild archivieren
-      </button>
-      <p class="wine-editor__note">
-        Verschiebt das Bild in den <code>_archive</code>-Ordner. Endgültiges Löschen erfolgt
-        manuell im Dateisystem.
-      </p>
-    </div>
+    <p class="wine-editor__file">Datei: {{ item.entry.path }}</p>
   } @else {
+    <!-- Editierbares Formular: gültiger angelegter Eintrag ODER Entwurf (unbekannter
+         Wein, noch keine JSON). Der Entwurf zeigt dasselbe vollständige Formular; es wird
+         erst geschrieben, wenn ein Name eingetragen wird. -->
     <header class="wine-editor__header">
       <h2 class="wine-editor__title" [class.wine-editor__title--placeholder]="incomplete()">
-        @if (isPresent(item.wine?.name)) {
-          {{ item.wine?.name }}
+        @if (isDraft()) {
+          @if (isPresent(value('name'))) {
+            {{ value('name') }}
+          } @else {
+            unbekannter Wein
+          }
+        } @else if (isPresent(item.kind === 'created' ? item.wine?.name : null)) {
+          {{ item.kind === 'created' ? item.wine?.name : '' }}
         } @else {
           (ohne Namen)
         }
@@ -53,8 +37,20 @@
       }
     </header>
 
-    <!-- Speicherstatus-Indikator (Req 17.23/17.24/17.25) -->
+    <!-- Große Bildvorschau des gepflegten Weins (Erkennbarkeit beim Pflegen) -->
+    @if (previewPath(); as preview) {
+      <app-entry-thumbnail
+        class="wine-editor__preview"
+        [path]="preview"
+        [alt]="isDraft() ? 'Weinbild' : (item.kind === 'created' && isPresent(item.wine?.name) ? '' + item.wine?.name : 'Weinbild')"
+        [maxSize]="640"
+        [large]="true"
+      />
+    }
+
+    <!-- Speicherstatus-Indikator (Req 17.23/17.24/17.25) — nur für angelegte Einträge. -->
     @let s = saveState();
+    @if (!isDraft()) {
     <div
       class="wine-editor__status"
       [class.wine-editor__status--success]="s.status === 'success'"
@@ -83,6 +79,7 @@
         }
       }
     </div>
+    }
 
     @if (fromImageError(); as err) {
       <div
@@ -133,6 +130,7 @@
                 [id]="'wine-editor-' + field.schema.field"
                 type="date"
                 [value]="value(field.schema.field)"
+                [disabled]="isFieldLocked(field.schema.field)"
                 (input)="onInput(field, $any($event.target).value)"
               />
             }
@@ -146,6 +144,7 @@
                 max="10"
                 step="0.1"
                 [value]="value(field.schema.field)"
+                [disabled]="isFieldLocked(field.schema.field)"
                 (input)="onInput(field, $any($event.target).value)"
               />
             }
@@ -157,6 +156,7 @@
                 type="text"
                 inputmode="decimal"
                 [value]="value(field.schema.field)"
+                [disabled]="isFieldLocked(field.schema.field)"
                 (input)="onInput(field, $any($event.target).value)"
               />
             }
@@ -181,6 +181,7 @@
                   [id]="'wine-editor-' + field.schema.field"
                   type="text"
                   [attr.list]="listId(field.schema.field)"
+                  [disabled]="isFieldLocked(field.schema.field)"
                   placeholder="Rebsorte hinzufügen …"
                   (keydown.enter)="
                     addChip(field.schema.field, $any($event.target).value);
@@ -207,6 +208,7 @@
                 type="text"
                 [attr.list]="listId(field.schema.field)"
                 [value]="value(field.schema.field)"
+                [disabled]="isFieldLocked(field.schema.field)"
                 (input)="onInput(field, $any($event.target).value)"
               />
               <datalist [id]="listId(field.schema.field)">
@@ -216,7 +218,7 @@
               </datalist>
             }
 
-            <!-- ImagePicker für das image-Feld (Req 17.28–17.35) -->
+            <!-- Bildauswahl: Button öffnet den großen Dialog (Req 17.28–17.35) -->
             @case ('image') {
               <div class="wine-editor__image">
                 <input
@@ -226,16 +228,26 @@
                   [value]="value(field.schema.field)"
                   placeholder="kein Bild"
                 />
-                @if (isPresent(value(field.schema.field))) {
-                  <button type="button" (click)="clearImage()" data-testid="image-clear">
-                    Entfernen
+                <div class="wine-editor__image-actions">
+                  <button
+                    type="button"
+                    class="wine-editor__image-open"
+                    [disabled]="isFieldLocked(field.schema.field)"
+                    (click)="openImagePicker()"
+                    data-testid="image-open-picker"
+                  >
+                    @if (isPresent(value(field.schema.field))) {
+                      Bild ersetzen
+                    } @else {
+                      Bild ergänzen
+                    }
                   </button>
-                }
-                <app-image-picker
-                  [images]="images()"
-                  [selected]="value(field.schema.field)"
-                  (pick)="pickImage($event)"
-                />
+                  @if (isPresent(value(field.schema.field))) {
+                    <button type="button" (click)="clearImage()" data-testid="image-clear">
+                      Entfernen
+                    </button>
+                  }
+                </div>
               </div>
             }
 
@@ -251,6 +263,7 @@
                 />
                 <button
                   type="button"
+                  [disabled]="isFieldLocked(field.schema.field)"
                   (click)="loadMedia(field.mediaKind!)"
                   [attr.data-testid]="'media-load-' + field.schema.field"
                 >
@@ -290,7 +303,6 @@
                   [value]="value(field.schema.field)"
                   placeholder="Neuen Namen eingeben oder bestehenden bildlosen Wein wählen …"
                   (input)="onProvisionalNameInput(field, $any($event.target).value)"
-                  (change)="onProvisionalNameInput(field, $any($event.target).value)"
                   data-testid="provisional-name-input"
                 />
                 <datalist [id]="listId(field.schema.field)">
@@ -299,15 +311,41 @@
                   }
                 </datalist>
                 <p class="wine-editor__note">
-                  Eigenen neuen Namen eingeben (Eintrag bleibt) oder einen bestehenden bildlosen
-                  Wein wählen (Bild wird mit ihm verknüpft).
+                  Beim Klick auf „Wein anlegen" wird mit einem exakt passenden bestehenden
+                  bildlosen Wein verknüpft, sonst ein neuer Eintrag angelegt.
                 </p>
+
+                <!-- Info + Anlegen-Button direkt unter dem Namensfeld -->
+                <div class="wine-editor__draft-bar" data-testid="draft-hint">
+                  <button
+                    type="button"
+                    class="wine-editor__draft-create"
+                    [disabled]="!canCreateDraft()"
+                    (click)="commitDraftManually()"
+                    data-testid="draft-create"
+                  >
+                    Wein anlegen
+                  </button>
+                  <p class="wine-editor__note">
+                    Die übrigen Felder sind erst nach dem Anlegen bearbeitbar.
+                  </p>
+                </div>
+                @if (fromImageError(); as err) {
+                  <div
+                    class="wine-editor__status wine-editor__status--error"
+                    role="alert"
+                    data-testid="from-image-error"
+                  >
+                    {{ err }}
+                  </div>
+                }
               } @else {
                 <input
                   [id]="'wine-editor-' + field.schema.field"
                   type="text"
                   [attr.list]="listId(field.schema.field)"
                   [value]="value(field.schema.field)"
+                  [disabled]="isFieldLocked(field.schema.field)"
                   (input)="onInput(field, $any($event.target).value)"
                 />
                 @if (field.suggestions.length > 0) {
@@ -338,18 +376,73 @@
       }
     </form>
 
-    <p class="wine-editor__file">Datei: {{ item.entry.path }}</p>
+    @if (isDraft()) {
+      <p class="wine-editor__file">Bild: {{ draftImage()?.path }}</p>
 
-    <!-- Eintrag archivieren (kein Löschen, Req 17.44/17.47) -->
-    <div class="wine-editor__archive">
-      <button type="button" (click)="archiveEntry()" data-testid="archive-entry">
-        Eintrag archivieren
-      </button>
-      <p class="wine-editor__note">
-        Verschiebt die JSON-Quelldatei samt verknüpfter Bild-/Audio-/Video-Dateien in den
-        <code>_archive</code>-Ordner. Es gibt bewusst keine Lösch-Funktion; endgültiges
-        Löschen und Zurückholen erfolgen manuell im Dateisystem.
-      </p>
+      <!-- Entwurf: nur das Bild archivieren (kein Löschen, noch keine JSON) -->
+      <div class="wine-editor__archive">
+        <button type="button" (click)="archiveImage()" data-testid="archive-image">
+          Bild archivieren
+        </button>
+        <p class="wine-editor__note">
+          Verschiebt das Bild in den <code>_archive</code>-Ordner. Endgültiges Löschen erfolgt
+          manuell im Dateisystem.
+        </p>
+      </div>
+    } @else if (item.kind === 'created') {
+      <p class="wine-editor__file">Datei: {{ item.entry.path }}</p>
+
+      <!-- Eintrag archivieren (kein Löschen, Req 17.44/17.47) -->
+      <div class="wine-editor__archive">
+        <button type="button" (click)="archiveEntry()" data-testid="archive-entry">
+          Eintrag archivieren
+        </button>
+        <p class="wine-editor__note">
+          Verschiebt die JSON-Quelldatei samt verknüpfter Bild-/Audio-/Video-Dateien in den
+          <code>_archive</code>-Ordner. Es gibt bewusst keine Lösch-Funktion; endgültiges
+          Löschen und Zurückholen erfolgen manuell im Dateisystem.
+        </p>
+      </div>
+    }
+  }
+
+  <!-- Großer Bildauswahl-Dialog (Req 17.28–17.35) -->
+  @if (imagePickerOpen()) {
+    <div
+      class="wine-editor__dialog-backdrop"
+      (click)="closeImagePicker()"
+      data-testid="image-dialog-backdrop"
+    >
+      <div
+        class="wine-editor__dialog"
+        role="dialog"
+        aria-modal="true"
+        [attr.aria-label]="'Bild auswählen für ' + imagePickerTitle()"
+        (click)="$event.stopPropagation()"
+      >
+        <header class="wine-editor__dialog-header">
+          <h3 class="wine-editor__dialog-title" data-testid="image-dialog-title">
+            Bild auswählen — {{ imagePickerTitle() }}
+          </h3>
+          <button
+            type="button"
+            class="wine-editor__dialog-close"
+            (click)="closeImagePicker()"
+            aria-label="Schließen"
+            data-testid="image-dialog-close"
+          >
+            ×
+          </button>
+        </header>
+        <div class="wine-editor__dialog-body" data-testid="image-dialog-body">
+          <app-image-picker
+            [images]="images()"
+            [selected]="value('image')"
+            [large]="true"
+            (pick)="onPickImageFromDialog($event)"
+          />
+        </div>
+      </div>
     </div>
   }
 </div>

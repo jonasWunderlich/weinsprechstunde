@@ -2,13 +2,14 @@ import { Wine } from '@weinsprechstunde/shared';
 import { ImageEntry, WineEntry } from '../services/file-system-access.service';
 
 /**
- * Dreiwertiger Eintragstyp-Filter des Editors (Req 17.10/17.14).
+ * Eintragstyp-Filter des Editors (Req 17.10/17.14).
  *
- * - `all`      – angelegte und unbekannte Weine erscheinen
- * - `created`  – nur Einträge mit vorhandener JSON-Quelldatei
- * - `unknown`  – nur nicht referenzierte Bilddateien (unbekannte Weine)
+ * - `all`                   – angelegte und unbekannte Weine erscheinen
+ * - `created`               – nur Einträge mit vorhandener JSON-Quelldatei
+ * - `created-without-image` – nur angelegte Weine ohne gesetztes `image`-Feld
+ * - `unknown`               – nur nicht referenzierte Bilddateien (unbekannte Weine)
  */
-export type EntryTypeFilter = 'all' | 'created' | 'unknown';
+export type EntryTypeFilter = 'all' | 'created' | 'created-without-image' | 'unknown';
 
 /**
  * Ein vereinheitlichter Listeneintrag der Editor-Liste. Er bildet sowohl angelegte

@@ -82,6 +82,12 @@ export interface MediaEntry {
  */
 export const THUMBNAIL_CONCURRENCY = 4;
 
+/**
+ * Obergrenze des Thumbnail-Caches (Anzahl Einträge). Begrenzt den Speicher bei sehr
+ * vielen Bildern; bei Überschreiten wird nach LRU der älteste Eintrag verworfen.
+ */
+export const THUMBNAIL_CACHE_MAX = 600;
+
 /** Ergebnis der clientseitigen Thumbnail-Erzeugung. */
 export interface Thumbnail {
   /** Blob des verkleinerten Vorschaubilds (PNG). */
@@ -167,6 +173,7 @@ export class FileSystemAccessService {
     const handle = await this.picker({ mode: 'readwrite' });
     await this.store.save(handle);
     this._directory.set(handle);
+    this.clearThumbnailCache();
     return handle;
   }
 
@@ -185,6 +192,7 @@ export class FileSystemAccessService {
     const granted = await this.ensurePermission(handle);
     if (!granted) return null;
     this._directory.set(handle);
+    this.clearThumbnailCache();
     return handle;
   }
 
@@ -222,6 +230,10 @@ export class FileSystemAccessService {
    */
   async scan(): Promise<ScanResult> {
     const dir = this.requireDirectory();
+    // Nach jeder Änderung (Anlegen/Verschieben/Archivieren/Speichern) löst der
+    // EditorStateService einen erneuten scan() aus. Den Thumbnail-Cache hier leeren,
+    // damit neu zugewiesene oder verschobene Bilder frische Vorschauen erhalten.
+    this.clearThumbnailCache();
     const entries: WineEntry[] = [];
     const rawImages: Array<{
       name: string;
@@ -454,16 +466,68 @@ export class FileSystemAccessService {
    * (reines Lesen via `getFile()`); das Seitenverhältnis bleibt erhalten.
    */
   async createThumbnail(path: string, maxSize = 256): Promise<Thumbnail> {
-    // Gleichzeitigkeit begrenzen: Jedes Thumbnail dekodiert das Originalbild in den
-    // Speicher. Ohne Drosselung würden hunderte Listeneinträge ihre Vollbilder parallel
-    // dekodieren und den Renderer-Prozess sprengen (Chrome-Crash "Fehlercode: 5", ohne
-    // JS-Konsolenfehler). Der Semaphor lässt nur THUMBNAIL_CONCURRENCY Dekodierungen
-    // gleichzeitig zu; die übrigen warten, sodass der Speicher-Peak beschränkt bleibt.
-    return this.runThrottled(async () => {
+    const key = `${path}@${maxSize}`;
+
+    // 1. Cache-Treffer: fertiges Thumbnail direkt zurückgeben (als MRU neu einsortieren).
+    //    Das Originalbild wird nicht erneut gelesen/dekodiert — das behebt das langsame
+    //    Nachladen beim Scrollen durch Liste und Dialog.
+    const cached = this.thumbnailCache.get(key);
+    if (cached) {
+      this.thumbnailCache.delete(key);
+      this.thumbnailCache.set(key, cached);
+      return cached;
+    }
+
+    // 2. Bereits laufende Erzeugung für denselben Schlüssel wiederverwenden
+    //    (Dedup): Liste und Dialog fordern dasselbe Bild oft gleichzeitig an.
+    const inflight = this.thumbnailInflight.get(key);
+    if (inflight) return inflight;
+
+    // 3. Neu erzeugen — gedrosselt (Gleichzeitigkeit begrenzt), damit nicht hunderte
+    //    Vollbilder parallel dekodiert werden und den Renderer-Prozess sprengen
+    //    (Chrome-Crash "Fehlercode: 5").
+    const task = this.runThrottled(async () => {
       const { handle } = await this.resolveFileHandle(path);
       const file = await handle.getFile();
       return this.thumbnailRenderer.render(file, maxSize);
-    });
+    })
+      .then((thumb) => {
+        this.cacheThumbnail(key, thumb);
+        return thumb;
+      })
+      .finally(() => {
+        this.thumbnailInflight.delete(key);
+      });
+
+    this.thumbnailInflight.set(key, task);
+    return task;
+  }
+
+  /**
+   * In-Memory-Cache der erzeugten Thumbnails (Schlüssel: `path@maxSize`). Eine
+   * `Map` bewahrt die Einfügereihenfolge, sodass sich eine einfache LRU-Strategie
+   * umsetzen lässt: Bei Überschreiten von {@link THUMBNAIL_CACHE_MAX} wird der
+   * älteste Eintrag verworfen, damit der Speicher nicht unbegrenzt wächst.
+   */
+  private readonly thumbnailCache = new Map<string, Thumbnail>();
+  private readonly thumbnailInflight = new Map<string, Promise<Thumbnail>>();
+
+  private cacheThumbnail(key: string, thumb: Thumbnail): void {
+    this.thumbnailCache.set(key, thumb);
+    while (this.thumbnailCache.size > THUMBNAIL_CACHE_MAX) {
+      const oldest = this.thumbnailCache.keys().next().value;
+      if (oldest === undefined) break;
+      this.thumbnailCache.delete(oldest);
+    }
+  }
+
+  /**
+   * Leert den Thumbnail-Cache. Wird bei jedem erneuten Verzeichnis-Scan sowie beim
+   * Freigeben/Wiederherstellen eines Ordners aufgerufen, damit nach Änderungen
+   * (Bild zugewiesen/verschoben/archiviert) keine veralteten Vorschaubilder erscheinen.
+   */
+  private clearThumbnailCache(): void {
+    this.thumbnailCache.clear();
   }
 
   /**

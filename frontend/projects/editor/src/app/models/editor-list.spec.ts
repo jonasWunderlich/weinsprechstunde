@@ -181,6 +181,37 @@ describe('buildEditorList', () => {
     expect(list).toHaveLength(1);
   });
 
+  it('entryType=created-without-image zeigt nur angelegte Weine ohne image-Feld', () => {
+    const withImage: Wine = { name: 'MitBild', tasting_date: '2021-01-01', image: 'mit.jpg' };
+    const withoutImage: Wine = { name: 'OhneBild', tasting_date: '2022-01-01' };
+    const emptyImage: Wine = { name: 'LeeresBild', tasting_date: '2023-01-01', image: '' };
+    const eWith = wineEntry('mit.json', withImage);
+    const eWithout = wineEntry('ohne.json', withoutImage);
+    const eEmpty = wineEntry('leer.json', emptyImage);
+
+    const list = buildEditorList(
+      [emptyImage, withoutImage, withImage],
+      [eWith, eWithout, eEmpty],
+      [img1], // unbekanntes Bild muss ausgeblendet bleiben
+      'created-without-image',
+      true,
+    );
+
+    // Nur angelegte, bildlose Weine; keine unbekannten; der Wein mit Bild fehlt.
+    expect(list.every((i) => i.kind === 'created')).toBe(true);
+    expect(list.map((i) => (i.kind === 'created' ? i.wine?.name : null))).toEqual([
+      'LeeresBild',
+      'OhneBild',
+    ]);
+  });
+
+  it('entryType=created-without-image blendet unbekannte Bilder aus', () => {
+    const withoutImage: Wine = { name: 'OhneBild', tasting_date: '2022-01-01' };
+    const eWithout = wineEntry('ohne.json', withoutImage);
+    const list = buildEditorList([withoutImage], [eWithout], [img1], 'created-without-image', true);
+    expect(list.some((i) => i.kind === 'unknown')).toBe(false);
+  });
+
   it('nicht-Standard-Sortierung: angelegte in FilterService-Reihenfolge, dann unbekannte', () => {
     // mixByDate=false; filteredWines in bestimmter Reihenfolge (z.B. rating_desc).
     const filtered = [w1, w2]; // bewusst nicht datumssortiert

@@ -63,6 +63,56 @@ export class FromImageService {
   }
 
   /**
+   * Legt die JSON eines zuvor als Entwurf bearbeiteten unbekannten Weins an (neuer Flow):
+   * im selben Unterordner wie das Bild (Basisname + `.json`, Req 17.37) mit den im
+   * Formular eingegebenen Feldern. Das `image`-Feld wird stets auf den Bild-Dateinamen
+   * (ohne Pfad) gesetzt. Es wird nicht umbenannt (bleibt der PhasePreparate überlassen).
+   *
+   * @throws wenn unter dem Zielpfad bereits eine Datei existiert (kein Überschreiben).
+   */
+  async createDraft(image: ImageEntry, fields: Wine): Promise<CreatedProvisional> {
+    const path = provisionalJsonPath(image);
+    if (await this.fsa.fileExists(path)) {
+      throw new Error(`Es existiert bereits eine JSON-Datei für dieses Bild: ${path}`);
+    }
+    const wine = withImage(fields, image.name);
+    const lastModified = await this.fsa.createJson(path, wine);
+    return { path, wine, lastModified, image };
+  }
+
+  /**
+   * Verknüpft das Bild eines Entwurfs (unbekannter Wein, noch keine eigene JSON) mit einem
+   * bestehenden bildlosen Eintrag (link-image, neuer Flow, Req 17.41–17.43): Bild bei
+   * Bedarf in dessen Verzeichnis verschieben, `image`-Feld setzen und schreiben. Da im
+   * Entwurfs-Flow keine zweite JSON existiert, entfällt das Entfernen einer vorläufigen
+   * JSON — die Invariante „genau eine JSON pro Wein" bleibt trivial erfüllt. Bei einem
+   * Schreibfehler wird ein zuvor verschobenes Bild zurückgerollt.
+   *
+   * @param image  das Bild des Entwurfs.
+   * @param target der ausgewählte bestehende bildlose Eintrag (bleibt erhalten).
+   */
+  async linkDraftImage(image: ImageEntry, target: WineEntry): Promise<LinkResult> {
+    if (!target.wine) {
+      throw new Error('Der ausgewählte Eintrag hat keinen gültigen JSON-Inhalt.');
+    }
+    const sameDir = segmentsEqual(image.dirSegments, target.dirSegments);
+    let movedImagePath: string | null = null;
+    if (!sameDir) {
+      movedImagePath = await this.fsa.moveFile(image.path, target.dirSegments);
+    }
+    try {
+      const nextWine = withImage(target.wine, image.name);
+      const lastModified = await this.fsa.writeJson(target.path, nextWine);
+      return { path: target.path, wine: nextWine, lastModified };
+    } catch (err) {
+      if (movedImagePath) {
+        await this.safeMoveBack(movedImagePath, image);
+      }
+      throw wrapLinkError(err);
+    }
+  }
+
+    /**
    * Verknüpft das angeklickte Bild mit einem bestehenden bildlosen Weineintrag
    * (link-image, Req 17.41–17.43). Als **eine zusammenhängende Operation** mit sauberem
    * Rollback-Verhalten:

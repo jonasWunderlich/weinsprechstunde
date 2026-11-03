@@ -24,6 +24,8 @@ export class EditorControlsComponent {
   readonly sortOptions: { value: SortOption; label: string }[] = [
     { value: 'tasting_date_desc', label: 'Neueste Verkostung zuerst' },
     { value: 'tasting_date_asc', label: 'Älteste Verkostung zuerst' },
+    { value: 'name_asc', label: 'Name A–Z' },
+    { value: 'name_desc', label: 'Name Z–A' },
     { value: 'rating_desc', label: 'Beste Bewertung zuerst' },
     { value: 'price_desc', label: 'Höchster Preis zuerst' },
     { value: 'price_asc', label: 'Niedrigster Preis zuerst' },

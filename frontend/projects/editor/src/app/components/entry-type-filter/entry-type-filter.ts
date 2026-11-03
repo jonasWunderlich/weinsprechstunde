@@ -3,7 +3,7 @@ import { EditorStateService } from '../../services/editor-state.service';
 import { EntryTypeFilter } from '../../models/editor-list.model';
 
 /**
- * Editor-spezifischer dreiwertiger Eintragstyp-Filter „Alle" / „Nur angelegte" /
+ * Editor-spezifischer Eintragstyp-Filter „Alle" / „Nur angelegte" / „Ohne Bilder" /
  * „Nur unbekannte" (Req 17.14). Liegt bewusst in der `editor`-App, nicht in der
  * geteilten Library (Req 17.11).
  */
@@ -19,6 +19,7 @@ export class EntryTypeFilterComponent {
   readonly options: { value: EntryTypeFilter; label: string }[] = [
     { value: 'all', label: 'Alle' },
     { value: 'created', label: 'Nur angelegte' },
+    { value: 'created-without-image', label: 'Ohne Bilder' },
     { value: 'unknown', label: 'Nur unbekannte' },
   ];
 

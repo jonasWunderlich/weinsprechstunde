@@ -43,6 +43,11 @@
     font-size: 0.78rem;
     font-family: monospace;
   }
+
+  &__preview {
+    margin: 0.25rem 0 0.75rem;
+    max-width: 320px;
+  }
 }
 
 .wine-editor {
@@ -219,5 +224,126 @@
     .wine-editor__note {
       margin: 0.35rem 0 0;
     }
+  }
+}
+
+
+.wine-editor {
+  &__image-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.3rem;
+
+    button {
+      border: 1px solid #cfc7bd;
+      background: #efe9e1;
+      border-radius: 3px;
+      padding: 0.35rem 0.7rem;
+      font-size: 0.88rem;
+      cursor: pointer;
+      color: #6b6258;
+
+      &:hover {
+        background: #e4ddd2;
+      }
+    }
+  }
+
+  &__image-open {
+    font-weight: 600;
+  }
+
+  &__dialog-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    z-index: 1000;
+  }
+
+  &__dialog {
+    background: #fff;
+    border-radius: 8px;
+    width: min(1100px, 95vw);
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+  }
+
+  &__dialog-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.8rem 1rem;
+    border-bottom: 1px solid #e0ddd7;
+  }
+
+  &__dialog-title {
+    margin: 0;
+    font-size: 1.05rem;
+    color: #2d2a26;
+  }
+
+  &__dialog-close {
+    border: none;
+    background: transparent;
+    font-size: 1.6rem;
+    line-height: 1;
+    cursor: pointer;
+    color: #6b6258;
+    padding: 0 0.3rem;
+
+    &:hover {
+      color: #2d2a26;
+    }
+  }
+
+  &__dialog-body {
+    padding: 1rem;
+    overflow-y: auto;
+  }
+}
+
+
+.wine-editor {
+  &__draft-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.6rem;
+    margin-bottom: 0.75rem;
+    border: 1px solid #d9a441;
+    background: #fff8ec;
+    border-radius: 6px;
+  }
+
+  &__draft-create {
+    align-self: flex-start;
+    border: none;
+    border-radius: 4px;
+    background: #7a1f2b;
+    color: #fff;
+    padding: 0.4rem 0.9rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+  }
+
+  // Gesperrte Felder im Entwurf (readonly, bis der Wein angelegt ist).
+  &__form input:disabled,
+  &__form button:disabled {
+    background: #f1eee9;
+    color: #9c948a;
+    cursor: default;
   }
 }

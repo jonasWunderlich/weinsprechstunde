@@ -62,10 +62,27 @@ export function applyFiltersAndSort(
         return (b.price ?? -Infinity) - (a.price ?? -Infinity);
       case 'price_asc':
         return (a.price ?? Infinity) - (b.price ?? Infinity);
+      case 'name_asc':
+        return compareByName(a, b, 'asc');
+      case 'name_desc':
+        return compareByName(a, b, 'desc');
       default: // tasting_date_desc
         return (b.tasting_date ?? '').localeCompare(a.tasting_date ?? '');
     }
   });
+}
+
+/**
+ * Vergleicht zwei Weine nach `name` (case-insensitiv). Weine ohne nicht-leeren Namen
+ * landen in beiden Richtungen am Ende, damit sie die alphabetische Liste nicht anführen.
+ */
+function compareByName(a: Wine, b: Wine, dir: 'asc' | 'desc'): number {
+  const na = typeof a.name === 'string' ? a.name.trim().toLowerCase() : '';
+  const nb = typeof b.name === 'string' ? b.name.trim().toLowerCase() : '';
+  if (na === '' && nb === '') return 0;
+  if (na === '') return 1; // a ohne Name → ans Ende
+  if (nb === '') return -1; // b ohne Name → ans Ende
+  return dir === 'asc' ? na.localeCompare(nb) : nb.localeCompare(na);
 }
 
 /**

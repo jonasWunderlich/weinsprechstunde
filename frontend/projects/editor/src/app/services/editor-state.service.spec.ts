@@ -35,6 +35,13 @@ class FakeFsa {
     this.scanCalls++;
     return this.scanResult;
   }
+  /** EXIF-Datum, das select() beim Öffnen eines Entwurfs lädt. */
+  exifDate: string | null = null;
+  exifCalls: string[] = [];
+  async readImageExifDate(path: string): Promise<string | null> {
+    this.exifCalls.push(path);
+    return this.exifDate;
+  }
 }
 
 /** Fake des FromImageService, der nur die aufgerufenen Argumente aufzeichnet. */
@@ -54,6 +61,20 @@ class FakeFromImage {
 
   async linkImage(provisional: WineEntry, target: WineEntry, image: ImageEntry): Promise<{ path: string; wine: object; lastModified: number }> {
     this.linkCalls.push({ provisional, target, image });
+    if (this.linkError) throw this.linkError;
+    return { path: this.linkedPath, wine: { name: 'Bestehend', image: image.name }, lastModified: 2 };
+  }
+
+  // Neuer Entwurfs-Flow:
+  draftCalls: { image: ImageEntry; fields: Wine }[] = [];
+  draftLinkCalls: { image: ImageEntry; target: WineEntry }[] = [];
+  async createDraft(image: ImageEntry, fields: Wine): Promise<{ path: string; wine: object; lastModified: number; image: ImageEntry }> {
+    this.draftCalls.push({ image, fields });
+    if (this.createError) throw this.createError;
+    return { path: this.createdPath, wine: fields, lastModified: 1, image };
+  }
+  async linkDraftImage(image: ImageEntry, target: WineEntry): Promise<{ path: string; wine: object; lastModified: number }> {
+    this.draftLinkCalls.push({ image, target });
     if (this.linkError) throw this.linkError;
     return { path: this.linkedPath, wine: { name: 'Bestehend', image: image.name }, lastModified: 2 };
   }
@@ -206,107 +227,194 @@ describe('EditorStateService', () => {
     expect(fsa.scanCalls).toBe(0);
   });
 
-  describe('from-image: Anlegen per Bildklick (Req 17.36)', () => {
-    it('legt eine vorläufige JSON an, refresht und wählt den neuen Eintrag aus', async () => {
-      const image = imageEntry('u.jpg', 0, false);
-      const { state, fsa, fromImage } = setup({ entries: [], images: [image] });
-      await state.refresh();
-
-      // Nach dem Anlegen liefert der Scan den vorläufigen Eintrag.
-      fsa.scanResult = { entries: [wineEntry('u.json', { name: null as never, image: 'u.jpg' })], images: [] };
-
-      await state.createFromImage(image);
-
-      expect(fromImage.createCalls).toHaveLength(1);
-      expect(state.selectedId()).toBe('u.json');
-      expect(state.isProvisionalSelected()).toBe(true);
-      expect(state.fromImageError()).toBeNull();
-    });
-
-    it('setzt eine Fehleranzeige, wenn das Anlegen fehlschlägt (Req 17.43)', async () => {
-      const image = imageEntry('u.jpg', 0, false);
-      const { state, fromImage } = setup({ entries: [], images: [image] });
-      await state.refresh();
-      fromImage.createError = new Error('existiert bereits');
-
-      await state.createFromImage(image);
-
-      expect(state.fromImageError()).toContain('existiert bereits');
-      expect(state.isProvisionalSelected()).toBe(false);
-    });
-  });
-
-  describe('from-image: name-Autocomplete bildloser Einträge (Req 17.38)', () => {
-    it('schlägt nur bildlose, nicht-defekte Einträge vor (ohne den vorläufigen)', async () => {
+  describe('Entwurf: name-Autocomplete bildloser Einträge (Req 17.38)', () => {
+    it('schlägt nur bildlose, nicht-defekte Einträge vor', async () => {
       const entries = [
-        wineEntry('u.json', { name: null as never, image: 'u.jpg' }), // vorläufig
         wineEntry('a.json', { name: 'Alpha' }), // bildlos → Vorschlag
         wineEntry('b.json', { name: 'Beta', image: 'b.jpg' }), // hat Bild → kein Vorschlag
         wineEntry('broken.json', null, true), // defekt → kein Vorschlag
       ];
       const image = imageEntry('u.jpg', 0, false);
-      const { state, fsa } = setup({ entries, images: [image] });
+      const { state } = setup({ entries, images: [image] });
       await state.refresh();
-      // vorläufigen Eintrag als from-image markieren
-      fsa.scanResult = { entries, images: [image] };
-      await state.createFromImage(image);
+      state.select(state.listItems().find((i) => i.kind === 'unknown') ?? null);
 
       expect(state.imagelessSuggestions().map((e) => e.path)).toEqual(['a.json']);
     });
   });
 
-  describe('from-image: Weg 2 — Auswahl eines bestehenden Eintrags (link-image, Req 17.41)', () => {
-    it('verknüpft, löscht den vorläufigen Modus und wählt den bestehenden Eintrag', async () => {
-      const prov = wineEntry('u.json', { name: null as never, image: 'u.jpg' });
+  describe('Entwurf: Auswahl eines unbekannten Weins legt KEINE JSON an (neuer Flow)', () => {
+    it('öffnet den Entwurf, lädt das EXIF-Datum und schreibt nichts', async () => {
+      const image = imageEntry('u.jpg', 0, false);
+      const { state, fsa, fromImage } = setup({ entries: [], images: [image] });
+      fsa.exifDate = '2022-03-03';
+      await state.refresh();
+
+      state.select(state.listItems()[0]);
+      // Mikrotask-Runde, damit das asynchrone EXIF-Laden ankommt.
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(state.isDraftSelected()).toBe(true);
+      expect(state.draftImage()?.path).toBe('u.jpg');
+      expect(state.draftTastingDate()).toBe('2022-03-03');
+      // Es wurde nichts angelegt/verknüpft.
+      expect(fromImage.draftCalls).toHaveLength(0);
+      expect(fromImage.draftLinkCalls).toHaveLength(0);
+    });
+  });
+
+  describe('Entwurf aus Filter „Nur unbekannte" anlegen — Wein bleibt geöffnet', () => {
+    it('hält den neu angelegten Wein im Formular (selectedItem ist der neue Eintrag)', async () => {
+      const image = imageEntry('u.jpg', 0, false);
+      const { state, fsa, fromImage } = setup({ entries: [], images: [image] });
+      fromImage.createdPath = 'u.json';
+      await state.refresh();
+      state.setEntryType('unknown');
+      state.select(state.listItems()[0]);
+      expect(state.isDraftSelected()).toBe(true);
+
+      // Nach dem Anlegen liefert der Scan den neuen angelegten Eintrag; das Bild ist jetzt
+      // zugeordnet (kein unbekannter Wein mehr).
+      fsa.scanResult = {
+        entries: [wineEntry('u.json', { name: 'Neu', image: 'u.jpg' })],
+        images: [imageEntry('u.jpg', 0, true)],
+      };
+
+      await state.commitDraft(image, { name: 'Neu', image: 'u.jpg' });
+
+      // Der Wein bleibt geöffnet: selectedItem ist der neue angelegte Eintrag.
+      expect(state.selectedId()).toBe('u.json');
+      const sel = state.selectedItem();
+      expect(sel?.kind).toBe('created');
+      expect(sel && sel.kind === 'created' ? sel.wine?.name : null).toBe('Neu');
+      expect(state.isDraftSelected()).toBe(false);
+    });
+  });
+
+  describe('Entwurf → JSON anlegen bzw. verknüpfen (Req 17.40/17.41)', () => {
+    it('commitDraft legt die JSON an, refresht und wählt den neuen Eintrag', async () => {
+      const image = imageEntry('u.jpg', 0, false);
+      const { state, fsa, fromImage } = setup({ entries: [], images: [image] });
+      await state.refresh();
+      state.select(state.listItems()[0]);
+
+      fsa.scanResult = {
+        entries: [wineEntry('u.json', { name: 'Neuer Wein', image: 'u.jpg' })],
+        images: [imageEntry('u.jpg', 0, true)],
+      };
+
+      await state.commitDraft(image, { name: 'Neuer Wein', image: 'u.jpg' });
+
+      expect(fromImage.draftCalls).toHaveLength(1);
+      expect(fromImage.draftCalls[0].fields.name).toBe('Neuer Wein');
+      expect(state.selectedId()).toBe('u.json');
+      expect(state.fromImageError()).toBeNull();
+    });
+
+    it('linkDraftToExisting verknüpft mit einem bestehenden Eintrag und wählt ihn', async () => {
       const target = wineEntry('bestehend.json', { name: 'Bestehend' });
       const image = imageEntry('u.jpg', 0, false);
-      const { state, fsa, fromImage } = setup({ entries: [prov, target], images: [image] });
+      const { state, fsa, fromImage } = setup({ entries: [target], images: [image] });
       await state.refresh();
-      await state.createFromImage(image);
+      state.select(state.listItems().find((i) => i.kind === 'unknown') ?? null);
 
-      // Nach dem Verknüpfen liefert der Scan nur noch den bestehenden Eintrag mit Bild.
       fsa.scanResult = {
         entries: [wineEntry('bestehend.json', { name: 'Bestehend', image: 'u.jpg' })],
         images: [imageEntry('u.jpg', 0, true)],
       };
 
-      await state.linkToExisting('bestehend.json');
+      await state.linkDraftToExisting(image, 'bestehend.json');
 
-      expect(fromImage.linkCalls).toHaveLength(1);
-      expect(fromImage.linkCalls[0].target.path).toBe('bestehend.json');
+      expect(fromImage.draftLinkCalls).toHaveLength(1);
+      expect(fromImage.draftLinkCalls[0].target.path).toBe('bestehend.json');
       expect(state.selectedId()).toBe('bestehend.json');
-      expect(state.isProvisionalSelected()).toBe(false);
       expect(state.fromImageError()).toBeNull();
     });
 
-    it('setzt eine Fehleranzeige ohne doppelte JSON bei Fehlschlag (Req 17.43)', async () => {
-      const prov = wineEntry('u.json', { name: null as never, image: 'u.jpg' });
+    it('setzt eine Fehleranzeige bei fehlgeschlagenem Verknüpfen (Req 17.43)', async () => {
       const target = wineEntry('bestehend.json', { name: 'Bestehend' });
       const image = imageEntry('u.jpg', 0, false);
-      const { state, fromImage } = setup({ entries: [prov, target], images: [image] });
+      const { state, fromImage } = setup({ entries: [target], images: [image] });
       await state.refresh();
-      await state.createFromImage(image);
+      state.select(state.listItems().find((i) => i.kind === 'unknown') ?? null);
       fromImage.linkError = new Error('Verknüpfen fehlgeschlagen');
 
-      await state.linkToExisting('bestehend.json');
+      await state.linkDraftToExisting(image, 'bestehend.json');
 
       expect(state.fromImageError()).toContain('Verknüpfen fehlgeschlagen');
-      // Der vorläufige Modus bleibt erhalten (Rollback wiederhergestellt).
-      expect(state.provisionalPath()).toBe('u.json');
+    });
+
+    it('setzt eine Fehleranzeige bei fehlgeschlagenem Anlegen', async () => {
+      const image = imageEntry('u.jpg', 0, false);
+      const { state, fromImage } = setup({ entries: [], images: [image] });
+      await state.refresh();
+      state.select(state.listItems()[0]);
+      fromImage.createError = new Error('Anlegen fehlgeschlagen');
+
+      await state.commitDraft(image, { name: 'X', image: 'u.jpg' });
+
+      expect(state.fromImageError()).toContain('Anlegen fehlgeschlagen');
     });
   });
 
-  it('Weg 1 (eigener neuer Name) behält den vorläufigen Eintrag', async () => {
-    const prov = wineEntry('u.json', { name: null as never, image: 'u.jpg' });
-    const image = imageEntry('u.jpg', 0, false);
-    const { state, fromImage } = setup({ entries: [prov], images: [image] });
-    await state.refresh();
-    await state.createFromImage(image);
+  describe('Pfeiltasten-Navigation in der Liste (selectRelative)', () => {
+    const list = () => [
+      wineEntry('a.json', { name: 'Alpha', tasting_date: '2023-01-01' }),
+      wineEntry('b.json', { name: 'Beta', tasting_date: '2022-01-01' }),
+      wineEntry('c.json', { name: 'Gamma', tasting_date: '2021-01-01' }),
+    ];
 
-    // Weg 1 läuft NICHT über linkToExisting — der vorläufige Eintrag bleibt ausgewählt.
-    expect(fromImage.linkCalls).toHaveLength(0);
-    expect(state.provisionalPath()).toBe('u.json');
-    expect(state.selectedId()).toBe('u.json');
+    it('wählt den nächsten und vorherigen Eintrag', async () => {
+      const { state } = setup({ entries: list(), images: [] });
+      await state.refresh();
+      state.select(state.listItems()[0]);
+      expect(state.selectedId()).toBe('a.json');
+
+      state.selectRelative(1);
+      expect(state.selectedId()).toBe('b.json');
+      state.selectRelative(1);
+      expect(state.selectedId()).toBe('c.json');
+      state.selectRelative(-1);
+      expect(state.selectedId()).toBe('b.json');
+    });
+
+    it('bleibt am Rand stehen (kein Wrap)', async () => {
+      const { state } = setup({ entries: list(), images: [] });
+      await state.refresh();
+      state.select(state.listItems()[0]);
+      state.selectRelative(-1); // schon erster → bleibt
+      expect(state.selectedId()).toBe('a.json');
+
+      state.select(state.listItems()[2]);
+      state.selectRelative(1); // schon letzter → bleibt
+      expect(state.selectedId()).toBe('c.json');
+    });
+
+    it('ohne Auswahl wählt Abwärts den ersten, Aufwärts den letzten Eintrag', async () => {
+      const { state } = setup({ entries: list(), images: [] });
+      await state.refresh();
+      expect(state.selectedId()).toBeNull();
+      state.selectRelative(1);
+      expect(state.selectedId()).toBe('a.json');
+
+      state.select(null);
+      state.selectRelative(-1);
+      expect(state.selectedId()).toBe('c.json');
+    });
+
+    it('überspringt defekte (nicht auswählbare) Einträge', async () => {
+      const entries = [
+        wineEntry('a.json', { name: 'Alpha', tasting_date: '2023-01-01' }),
+        wineEntry('b.json', null, true), // defekt → übersprungen
+        wineEntry('c.json', { name: 'Gamma', tasting_date: '2021-01-01' }),
+      ];
+      const { state } = setup({ entries, images: [] });
+      await state.refresh();
+      state.select(state.listItems()[0]);
+      state.selectRelative(1);
+      expect(state.selectedId()).toBe('c.json');
+    });
   });
 
   describe('Archivieren (Req 17.44–17.48)', () => {

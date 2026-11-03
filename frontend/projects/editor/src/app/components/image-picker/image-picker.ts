@@ -35,6 +35,9 @@ import {
 @Component({
   selector: 'app-image-picker',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: {
+    '[class.image-picker--large]': 'large()',
+  },
   imports: [EntryThumbnailComponent],
   templateUrl: './image-picker.html',
   styleUrl: './image-picker.scss',
@@ -44,6 +47,11 @@ export class ImagePickerComponent {
   readonly images = input<ImageEntry[]>([]);
   /** Aktuell im `image`-Feld gesetzter Dateiname (zum Hervorheben der Auswahl). */
   readonly selected = input<string>('');
+  /**
+   * Große Kachel-Darstellung mit lesbaren Etiketten (für die Bildauswahl im Dialog).
+   * Steuert nur das Layout; das Verhalten (Filter/Sortierung/Auswahl) bleibt gleich.
+   */
+  readonly large = input<boolean>(false);
 
   /** Emittiert den Dateinamen (ohne Pfad) des ausgewählten Bildes (Req 17.34/17.35). */
   readonly pick = output<string>();

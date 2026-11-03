@@ -85,6 +85,21 @@ describe('applyFiltersAndSort (reine Funktion)', () => {
     ).toEqual(['Günstig', 'Mittel', 'Teuer']);
   });
 
+  it('Sortierung name_asc / name_desc (case-insensitiv, Namenlose ans Ende)', () => {
+    const wines = [
+      wine({ name: 'banane' }),
+      wine({ name: 'Apfel' }),
+      wine({ name: '' }),
+      wine({ name: 'Cidre' }),
+    ];
+    expect(
+      applyFiltersAndSort(wines, emptyFilter(), 'name_asc', SEARCH_FIELDS).map((w) => w.name),
+    ).toEqual(['Apfel', 'banane', 'Cidre', '']);
+    expect(
+      applyFiltersAndSort(wines, emptyFilter(), 'name_desc', SEARCH_FIELDS).map((w) => w.name),
+    ).toEqual(['Cidre', 'banane', 'Apfel', '']);
+  });
+
   it('mutiert die Eingabe nicht', () => {
     const wines = [wine({ name: 'B', tasting_date: '2020-01-01' }), wine({ name: 'A', tasting_date: '2021-01-01' })];
     const copy = [...wines];

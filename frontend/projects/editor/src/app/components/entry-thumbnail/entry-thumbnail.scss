@@ -22,3 +22,24 @@
   font-size: 1.25rem;
   opacity: 0.5;
 }
+
+// Große Variante: Bildvorschau im WineEditor. Zeigt das vollständige Bild ohne
+// Beschnitt, damit der gepflegte Wein erkennbar ist (nutzt ein größeres,
+// höher aufgelöstes Thumbnail über den maxSize-Input).
+:host(.entry-thumbnail--large) {
+  // Größe bestimmt der Container (WineEditor-Vorschau bzw. Dialog-Kachel);
+  // hier nur Form und unbeschnittene Darstellung.
+  width: 100%;
+  height: auto;
+  aspect-ratio: 3 / 4;
+  border-radius: 6px;
+  background: #efece7;
+
+  .entry-thumbnail__img {
+    object-fit: contain;
+  }
+
+  .entry-thumbnail__placeholder {
+    font-size: 3rem;
+  }
+}

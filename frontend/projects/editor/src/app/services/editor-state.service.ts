@@ -1,11 +1,16 @@
 import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
-import { FilterService, WineSchemaField } from '@weinsprechstunde/shared';
+import { FilterService, Wine, WineSchemaField } from '@weinsprechstunde/shared';
 import { FileSystemAccessService, ImageEntry, WineEntry } from './file-system-access.service';
 import { EditorWineDataService } from './editor-wine-data.service';
 import { FromImageService } from './from-image.service';
 import { ArchiveService } from './archive.service';
 import { EditorListItem, EntryTypeFilter } from '../models/editor-list.model';
-import { buildEditorList, hasAttributeFilter } from '../models/editor-list';
+import {
+  buildEditorList,
+  hasAttributeFilter,
+  toCreatedListItem,
+  toUnknownListItem,
+} from '../models/editor-list';
 import { imagelessEntries } from '../models/from-image';
 
 /**
@@ -42,10 +47,15 @@ export class EditorStateService {
   private readonly _selectedId = signal<string | null>(null);
   readonly selectedId = this._selectedId.asReadonly();
 
-  // ── from-image: per Bildklick angelegter vorläufiger Eintrag (Req 17.36–17.43) ──
-  /** Pfad der aktuell per Bildklick angelegten vorläufigen JSON (oder `null`). */
-  private readonly _provisionalPath = signal<string | null>(null);
-  readonly provisionalPath = this._provisionalPath.asReadonly();
+  // ── Entwurf (unbekannter Wein, noch keine JSON) ─────────────────────────────
+  /**
+   * Das aus dem EXIF/Dateidatum ermittelte `tasting_date` (ISO) des aktuell als Entwurf
+   * geöffneten unbekannten Weins, zum Vorbefüllen des Formulars. `null`, solange nichts
+   * ermittelt wurde oder kein Entwurf offen ist. Wird beim Auswählen eines unbekannten
+   * Eintrags asynchron geladen.
+   */
+  private readonly _draftTastingDate = signal<string | null>(null);
+  readonly draftTastingDate = this._draftTastingDate.asReadonly();
   /** Fehleranzeige für fehlgeschlagenes Anlegen/Verknüpfen (Req 17.43). */
   private readonly _fromImageError = signal<string | null>(null);
   readonly fromImageError = this._fromImageError.asReadonly();
@@ -81,31 +91,45 @@ export class EditorStateService {
     );
   });
 
-  /** Der aktuell rechts im WineEditor angezeigte Eintrag (Req 17.9). */
+  /**
+   * Der aktuell rechts im WineEditor angezeigte Eintrag (Req 17.9).
+   *
+   * Bewusst aus den **rohen** Scan-Daten (`_entries`/`_images`) aufgelöst, NICHT aus der
+   * gefilterten `listItems()`: Was im Editor geöffnet ist, hängt nicht vom Listenfilter
+   * ab. So bleibt ein frisch angelegter Wein geöffnet, auch wenn der Eintragstyp-Filter
+   * (z. B. „Nur unbekannte") ihn in der Liste gerade ausblenden würde.
+   */
   readonly selectedItem = computed<EditorListItem | null>(() => {
     const id = this._selectedId();
     if (id === null) return null;
-    return this.listItems().find((i) => i.id === id) ?? null;
+    const entry = this._entries().find((e) => e.path === id);
+    if (entry) return toCreatedListItem(entry);
+    const image = this._images().find((i) => i.path === id && !i.assigned);
+    if (image) return toUnknownListItem(image);
+    return null;
   });
 
   /**
-   * `true`, wenn der aktuell ausgewählte Eintrag der soeben per Bildklick angelegte
-   * vorläufige Eintrag ist. Nur dann bietet das `name`-Feld das Autocomplete bildloser
-   * Einträge und die zwei Eingabewege (Req 17.38/17.39).
+   * `true`, wenn gerade ein unbekannter Wein als **Entwurf** geöffnet ist (Bild ohne
+   * JSON). In diesem Modus zeigt der WineEditor das vollständige Formular, schreibt aber
+   * nichts, solange kein Name eingetragen ist; das `name`-Feld bietet das Autocomplete
+   * bildloser Einträge und die zwei Eingabewege (neuer Name anlegen / bestehenden
+   * verknüpfen, Req 17.38/17.39/17.40/17.41).
    */
-  readonly isProvisionalSelected = computed<boolean>(() => {
-    const path = this._provisionalPath();
-    return path !== null && this._selectedId() === path;
+  readonly isDraftSelected = computed<boolean>(() => this.selectedItem()?.kind === 'unknown');
+
+  /** Das Bild des aktuell geöffneten Entwurfs (unbekannter Wein) oder `null`. */
+  readonly draftImage = computed<ImageEntry | null>(() => {
+    const item = this.selectedItem();
+    return item && item.kind === 'unknown' ? item.image : null;
   });
 
   /**
-   * Vorschläge für das `name`-Autocomplete eines per Bildklick angelegten Eintrags:
-   * alle bestehenden bildlosen Weineinträge (ohne gesetztes `image`-Feld), ohne den
-   * vorläufigen Eintrag selbst (Req 17.38).
+   * Vorschläge für das `name`-Autocomplete eines Entwurfs: alle bestehenden bildlosen
+   * Weineinträge (ohne gesetztes `image`-Feld), damit man ein Bild einem bestehenden
+   * Eintrag zuordnen kann (Req 17.38).
    */
-  readonly imagelessSuggestions = computed<WineEntry[]>(() =>
-    imagelessEntries(this._entries(), this._provisionalPath() ?? undefined),
-  );
+  readonly imagelessSuggestions = computed<WineEntry[]>(() => imagelessEntries(this._entries()));
 
   constructor() {
     // Auto-Umschalten „Nur unbekannte" → „Nur angelegte", sobald ein attributbasierter
@@ -128,18 +152,69 @@ export class EditorStateService {
     this.entryType.set(type);
   }
 
-  /** Wählt einen Listeneintrag aus; defekte JSONs sind nicht auswählbar (Req 17.26). */
+  /**
+   * Wählt einen Listeneintrag aus; defekte JSONs sind nicht auswählbar (Req 17.26).
+   *
+   * Für einen unbekannten Wein (Bild ohne JSON) wird KEINE JSON angelegt — der Editor
+   * zeigt stattdessen das vollständige Formular als Entwurf, vorbefüllt mit Bild und
+   * (asynchron geladenem) EXIF-`tasting_date`. Die JSON entsteht erst, sobald ein Name
+   * eingetragen wird (siehe {@link commitDraft}).
+   */
   select(item: EditorListItem | null): void {
     if (item && item.kind === 'created' && item.broken) return;
     const id = item ? item.id : null;
-    // Verlässt der Benutzer den per Bildklick angelegten vorläufigen Eintrag, endet der
-    // from-image-Modus (das name-Autocomplete der zwei Wege gilt nur für diesen Eintrag).
-    if (id !== this._provisionalPath()) {
-      this._provisionalPath.set(null);
-    }
     this._fromImageError.set(null);
     this._archiveError.set(null);
+    this._draftTastingDate.set(null);
     this._selectedId.set(id);
+
+    // Für einen unbekannten Wein das EXIF-/Dateidatum zum Vorbefüllen laden (best effort).
+    if (item && item.kind === 'unknown') {
+      const imagePath = item.image.path;
+      void this.fsa
+        .readImageExifDate(imagePath)
+        .then((date) => {
+          // Nur übernehmen, wenn noch derselbe Entwurf offen ist.
+          if (this._selectedId() === id) this._draftTastingDate.set(date);
+        })
+        .catch(() => {
+          /* best effort: ohne Datum weiter */
+        });
+    }
+  }
+
+  /**
+   * Navigiert mit den Pfeiltasten durch die (gefilterte, sortierte) Liste: `delta = 1`
+   * wählt den nächsten, `delta = -1` den vorherigen Eintrag in der Reihenfolge von
+   * {@link listItems}. Nicht auswählbare (defekte) Einträge werden übersprungen. Ohne
+   * aktuelle Auswahl wählt `delta >= 0` den ersten, `delta < 0` den letzten auswählbaren
+   * Eintrag. Am Rand bleibt die Auswahl stehen (kein Wrap).
+   */
+  selectRelative(delta: number): void {
+    const items = this.listItems();
+    if (items.length === 0) return;
+
+    const selectable = (i: EditorListItem): boolean => !(i.kind === 'created' && i.broken);
+    const id = this._selectedId();
+    const currentIndex = id === null ? -1 : items.findIndex((i) => i.id === id);
+
+    let index: number;
+    if (currentIndex === -1) {
+      // Keine (sichtbare) Auswahl: beim ersten bzw. letzten Eintrag beginnen.
+      index = delta >= 0 ? 0 : items.length - 1;
+    } else {
+      index = currentIndex + (delta >= 0 ? 1 : -1);
+    }
+
+    // In Laufrichtung den nächsten auswählbaren Eintrag suchen; am Rand anhalten.
+    const step = delta >= 0 ? 1 : -1;
+    while (index >= 0 && index < items.length) {
+      if (selectable(items[index])) {
+        this.select(items[index]);
+        return;
+      }
+      index += step;
+    }
   }
 
   /**
@@ -158,9 +233,14 @@ export class EditorStateService {
       this.wineData.wines.set(
         result.entries.filter((e) => e.wine !== null && !e.broken).map((e) => e.wine!),
       );
-      // Auswahl beibehalten, falls der Eintrag noch existiert; sonst zurücksetzen.
+      // Auswahl beibehalten, solange der geöffnete Eintrag im Scan noch existiert
+      // (unabhängig vom Listenfilter — der Editor zeigt auch gefilterte Einträge weiter).
       const id = this._selectedId();
-      if (id !== null && !this.listItems().some((i) => i.id === id)) {
+      const stillExists =
+        id !== null &&
+        (result.entries.some((e) => e.path === id) ||
+          result.images.some((i) => i.path === id && !i.assigned));
+      if (id !== null && !stillExists) {
         this._selectedId.set(null);
       }
     } catch (err) {
@@ -221,27 +301,30 @@ export class EditorStateService {
     }
   }
 
-  /** Setzt nach erfolgreicher Archivierung Auswahl und from-image-Modus zurück. */
+  /** Setzt nach erfolgreicher Archivierung Auswahl und Entwurfszustand zurück. */
   private resetSelectionAfterArchive(): void {
     this._selectedId.set(null);
-    this._provisionalPath.set(null);
+    this._draftTastingDate.set(null);
     this._fromImageError.set(null);
   }
 
   /**
-   * Legt per Klick auf das Bild eines unbekannten Weins eine vorläufige JSON-Quelldatei
-   * an (Req 17.36/17.37), lädt die Liste neu (Auto-Refresh, Req 17.6) und öffnet den
-   * WineEditor für den neuen Eintrag (Req 17.36). Bei Fehler wird eine erkennbare
-   * Fehleranzeige gesetzt (Req 17.43) und keine Auswahl geändert.
+   * Legt die JSON eines zuvor als Entwurf geöffneten unbekannten Weins an, sobald ein
+   * Name eingetragen wurde (neuer Flow, Req 17.36/17.37/17.40). Die JSON entsteht im
+   * selben Unterordner wie das Bild (Basisname des Bildes + `.json`) mit den im Formular
+   * eingegebenen Feldern; `image` wird auf den Bild-Dateinamen gesetzt. Danach lädt die
+   * Liste neu und der neu angelegte Eintrag wird ausgewählt (Auto-Refresh, Req 17.6).
+   * Bei Fehler wird eine erkennbare Fehleranzeige gesetzt und keine Auswahl geändert.
+   *
+   * @param image  das Bild des unbekannten Weins (Entwurf).
+   * @param fields die im Formular eingegebenen Feldwerte (bereits typkonvertiert/gemischt).
    */
-  async createFromImage(image: ImageEntry): Promise<void> {
+  async commitDraft(image: ImageEntry, fields: Wine): Promise<void> {
     this._fromImageError.set(null);
     try {
-      const created = await this.fromImage.createFromImage(image, this.wineData.schema());
+      const created = await this.fromImage.createDraft(image, fields);
       await this.refresh();
-      // Auswahl auf den resultierenden (vorläufigen) Eintrag setzen und als „provisorisch"
-      // markieren, damit das name-Autocomplete die zwei Eingabewege anbietet (Req 17.38/17.39).
-      this._provisionalPath.set(created.path);
+      this._draftTastingDate.set(null);
       this._selectedId.set(created.path);
     } catch (err) {
       this._fromImageError.set(err instanceof Error ? err.message : String(err));
@@ -249,47 +332,29 @@ export class EditorStateService {
   }
 
   /**
-   * Verknüpft (link-image) den aktuell per Bildklick angelegten vorläufigen Eintrag mit
-   * einem ausgewählten bestehenden bildlosen Eintrag (Req 17.41): entfernt die vorläufige
-   * JSON, setzt das `image`-Feld des bestehenden Eintrags, verschiebt das Bild bei Bedarf
-   * und zeigt fortan den bestehenden Eintrag an. Bei Fehler bleibt ein Zustand ohne
-   * doppelte JSON zurück und es wird eine erkennbare Fehleranzeige gesetzt (Req 17.43).
+   * Verknüpft (link-image) den aktuell als Entwurf geöffneten unbekannten Wein mit einem
+   * bestehenden bildlosen Eintrag (Req 17.41): setzt dessen `image`-Feld, verschiebt das
+   * Bild bei Bedarf in dessen Verzeichnis und zeigt fortan den bestehenden Eintrag an.
+   * Es wird KEINE neue JSON angelegt → genau eine JSON pro Wein (Req 17.42/17.43). Bei
+   * Fehler bleibt der Ausgangszustand erhalten und es wird eine Fehleranzeige gesetzt.
    *
+   * @param image      das Bild des Entwurfs.
    * @param targetPath Pfad der JSON des ausgewählten bestehenden bildlosen Eintrags.
    */
-  async linkToExisting(targetPath: string): Promise<void> {
+  async linkDraftToExisting(image: ImageEntry, targetPath: string): Promise<void> {
     this._fromImageError.set(null);
-    const provisionalPath = this._provisionalPath();
-    if (provisionalPath === null) return;
-
-    const entries = this._entries();
-    const provisional = entries.find((e) => e.path === provisionalPath);
-    const target = entries.find((e) => e.path === targetPath);
-    if (!provisional || !target) {
+    const target = this._entries().find((e) => e.path === targetPath);
+    if (!target || !target.wine) {
       this._fromImageError.set('Der zu verknüpfende Eintrag wurde nicht gefunden.');
       return;
     }
-    // Das zum vorläufigen Eintrag gehörende Bild aus dem Bild-Listing auflösen.
-    const imageName =
-      typeof provisional.wine?.image === 'string' ? provisional.wine.image : null;
-    const image = this._images().find(
-      (i) => i.name === imageName && segmentsEqual(i.dirSegments, provisional.dirSegments),
-    );
-    if (!image) {
-      this._fromImageError.set('Das zugehörige Bild wurde nicht gefunden.');
-      return;
-    }
-
     try {
-      const result = await this.fromImage.linkImage(provisional, target, image);
-      this._provisionalPath.set(null);
+      const result = await this.fromImage.linkDraftImage(image, target);
       await this.refresh();
-      // Fortan den bestehenden (nun verknüpften) Eintrag anzeigen und bearbeiten (Req 17.41).
+      this._draftTastingDate.set(null);
       this._selectedId.set(result.path);
     } catch (err) {
       this._fromImageError.set(err instanceof Error ? err.message : String(err));
-      // Rollback hat den Ausgangszustand wiederhergestellt; Liste neu laden, damit die
-      // Ansicht konsistent bleibt (vorläufiger Eintrag bleibt ausgewählt).
       await this.refresh();
     }
   }
