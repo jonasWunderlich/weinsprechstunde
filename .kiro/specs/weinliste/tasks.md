@@ -2,7 +2,7 @@
 
 ## Overview
 
-Dieser Plan setzt die Subsysteme von „Weinsprechstunde" in einer inkrementellen Reihenfolge um: Zuerst die gemeinsame Grundlage (Projektstruktur + zentrale Konfigurationsdateien), dann das Python Import-Skript, das WordPress-Migrations-Skript, das öffentliche Angular-Frontend und zuletzt den Angular-Workspace-Umbau samt der reinen Browser-Editor-App. Jede Aufgabe baut auf vorherigen auf und endet in integriertem, verdrahtetem Code.
+Dieser Plan setzt die Subsysteme von „Weinsprechstunde" in einer inkrementellen Reihenfolge um: Zuerst die gemeinsame Grundlage (Projektstruktur + zentrale Konfigurationsdateien), dann das Python Import-Skript, das öffentliche Angular-Frontend und zuletzt den Angular-Workspace-Umbau samt der reinen Browser-Editor-App. Jede Aufgabe baut auf vorherigen auf und endet in integriertem, verdrahtetem Code.
 
 Sprachen laut Design: **Python** (`scripts/`) und **TypeScript/Angular** (`frontend/` als Angular-Workspace mit den Projekten `projects/shared`, `projects/weinliste` und `projects/editor`). Es gibt **kein** Editor-Python-Backend und **kein** `editor/static/` — der Editor ist eine reine Angular-Browser-App ohne Backend, die direkt im Browser über die File System Access API auf den `import_dir` zugreift.
 
@@ -178,50 +178,6 @@ Property-Tests: `hypothesis` (Python, pytest), `fast-check` (Angular, vitest + j
     - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6_
 
 - [x] 10. Checkpoint - Import-Skript vollständig
-  - Ensure all tests pass, ask the user if questions arise.
-
-- [x] 11. WordPress-Migrations-Skript: SQL-Parsing und Datenmodelle
-  - [x] 11.1 `scripts/wordpress_migrate.py` Parsing-Grundlage
-    - Dataclasses `ParsedDump`, `WinePost`, `MigrationReport`
-    - `parse_sql_dump()` (regex `INSERT INTO`), `_split_value_tuples()`, `_parse_values()` (maskierte Quotes, NULL, Zahlen, Strings), `_strip_prefix()`
-    - `select_primary_dump()` (meiste Wein-Posts), `merge_supplementary_tables()`
-    - argparse mit `analyze` / `migrate`
-    - _Requirements: 21.1, 21.2, 21.3_
-
-  - [x]* 11.2 Unit-Tests für SQL-Parsing (Fixtures)
-    - INSERT-Statements, maskierte Quotes, NULL-Werte, Präfix-Strip, primäre Quelle
-    - _Requirements: 21.2, 21.3_
-
-- [x] 12. WordPress-Migrations-Skript: ACF-Mapping und Bild-Zuordnung
-  - [x] 12.1 ACF-Mapping und Bildauflösung implementieren
-    - `KNOWN_MAPPINGS`, `suggest_target()`, `suggest_action()` (`_`/`field_` → ignore)
-    - `extract_wine_posts()`, `get_postmeta()`, `get_meta()`
-    - `resolve_image()` (`_thumbnail_id` → Attachment → `_wp_attached_file`, Fallback Namensähnlichkeit), `pick_largest_variant()` (Original bevorzugen, sonst größte)
-    - _Requirements: 21.5, 21.14, 21.15, 21.16_
-
-  - [x]* 12.2 Unit-Tests für ACF-Mapping und Bild-Varianten
-    - Bekannte Keys, `_`/`field_` überspringen, unmapped, Bild-Varianten-Auswahl
-    - _Requirements: 21.5, 21.16_
-
-- [x] 13. WordPress-Migrations-Skript: analyze und migrate
-  - [x] 13.1 Analyse-Schritt implementieren
-    - `analyze()`: meta_keys mit Häufigkeit sammeln, `wordpress-mapping.json` mit Vorschlägen (target/action/_count) schreiben, KEINE Weindaten/Bilder
-    - `print_analyze_report()`: primäre Quelle + Begründung, Feldliste mit Häufigkeit, Prüf-Hinweis
-    - _Requirements: 21.3, 21.4, 21.5, 21.6, 21.7_
-
-  - [x] 13.2 Migrations-Schritt implementieren
-    - `migrate()`: geprüfte Mapping-Datei lesen; Feld nicht in Mapping → Abbruch mit Feldname
-    - action map→target, unmapped→`wp_unmapped_{key}`, ignore→verwerfen; leere/„0"-Werte nie übernehmen
-    - JSON pro Wein schreiben (`name` Pflicht, `tasting_date` aus post_date), Bild zuordnen+kopieren
-    - Alle restlichen Bilder übernehmen, `--force`-Schutz, `MigrationReport.print()`
-    - _Requirements: 21.8, 21.9, 21.10, 21.11, 21.12, 21.12a, 21.13, 21.17, 21.18, 21.19, 21.20, 21.21, 21.22_
-
-  - [x]* 13.3 Property-Test Migration gemäß geprüfter Mapping-Datei
-    - **Property 22: Migration — Verarbeitung gemäß geprüfter Mapping-Datei**
-    - **Validates: Requirements 21.8, 21.9, 21.10, 21.11, 21.12**
-    - Tag: `# Feature: weinliste, Property 22: ...`
-
-- [x] 14. Checkpoint - Migrations-Skript vollständig
   - Ensure all tests pass, ask the user if questions arise.
 
 - [x] 15. Angular Frontend: Projekt-Setup, Modelle und Datenservice
@@ -510,14 +466,14 @@ Property-Tests: `hypothesis` (Python, pytest), `fast-check` (Angular, vitest + j
 - Aufgaben mit `*` sind optionale Test-Sub-Tasks und können für ein schnelleres MVP übersprungen werden.
 - Jede Aufgabe referenziert konkrete Requirements zur Nachverfolgbarkeit.
 - Checkpoints sichern inkrementelle Validierung nach jedem Subsystem.
-- Property-Tests (28 Stück) validieren universelle Korrektheitseigenschaften:
-  - Python/hypothesis (vorhanden): Properties 1–9, 18, 20–22 — jeweils mit `# Feature: weinliste, Property N: ...`
+- Property-Tests (27 Stück) validieren universelle Korrektheitseigenschaften:
+  - Python/hypothesis (vorhanden): Properties 1–9, 18, 20, 21 — jeweils mit `# Feature: weinliste, Property N: ...`
   - Angular/fast-check öffentliche Weinliste: Properties 10–16, 19 — jeweils mit `// Feature: weinliste, Property N: ...`
   - Angular/fast-check Editor-App (File System Access API über `FileSystemAccessService` gemockt): Property 17 (Konflikt-Erkennung), 23 (Thumbnail lässt Original unverändert), 24 (from-image Ort/Name/Feldbelegung), 25 (genau eine JSON pro Wein), 26 (Zugriff bleibt auf den Ordner beschränkt), 27 (Editor-Typkonvertierung), 28 (schema-fremde Felder bleiben erhalten)
   - Mindestens 100 Iterationen pro Property.
 - Test-Stack: Python (pytest + hypothesis) sowie Angular (öffentliche Weinliste, Editor-App und geteilte Library mit vitest + jsdom + fast-check). Der Editor hat kein Backend und damit keinen eigenen Teststack — er wird im Angular-Stack getestet.
 - Unit-Tests validieren konkrete Beispiele und Randfälle.
-- Die Tasks 1–24 (Import-Skript, WordPress-Migration, öffentliches Angular-Frontend inkl. Pfeiltasten-Nachrüstung) sind laufzeitunabhängig von der Editor-App; der Angular-Workspace-Umbau (Task 25) ist Voraussetzung für die Editor-App (Tasks 26–32).
+- Die Tasks 1–24 (Import-Skript, öffentliches Angular-Frontend inkl. Pfeiltasten-Nachrüstung) sind laufzeitunabhängig von der Editor-App; der Angular-Workspace-Umbau (Task 25) ist Voraussetzung für die Editor-App (Tasks 26–32).
 
 ## Task Dependency Graph
 
@@ -525,10 +481,10 @@ Property-Tests: `hypothesis` (Python, pytest), `fast-check` (Angular, vitest + j
 {
   "waves": [
     { "id": 0, "tasks": ["1.1"] },
-    { "id": 1, "tasks": ["2.1", "11.1", "15.1"] },
-    { "id": 2, "tasks": ["2.2", "2.3", "2.4", "11.2", "12.1", "15.2", "16.1"] },
-    { "id": 3, "tasks": ["3.1", "12.2", "13.1", "15.3", "16.2", "17.1", "18.1"] },
-    { "id": 4, "tasks": ["3.2", "4.1", "13.2", "13.3", "17.2", "18.2", "18.3"] },
+    { "id": 1, "tasks": ["2.1", "15.1"] },
+    { "id": 2, "tasks": ["2.2", "2.3", "2.4", "15.2", "16.1"] },
+    { "id": 3, "tasks": ["3.1", "15.3", "16.2", "17.1", "18.1"] },
+    { "id": 4, "tasks": ["3.2", "4.1", "17.2", "18.2", "18.3"] },
     { "id": 5, "tasks": ["4.2", "4.3", "4.4", "4.5", "5.1", "17.3", "17.4", "17.5", "18.4", "19.1"] },
     { "id": 6, "tasks": ["5.2", "5.3", "5.4", "5.5", "5.6", "6.1", "20.1", "20.2", "21.1"] },
     { "id": 7, "tasks": ["6.2", "6.3", "7.1", "20.3", "20.4", "20.5", "20.6", "20.7", "22.1"] },

@@ -1,6 +1,5 @@
 .kiro/specs/weinliste/.config.kiro
 import/
-migrate_wordpress/
 
 # Secrets / Zugangsdaten (niemals committen)
 .env
@@ -22,4 +21,3 @@ export/images/*
 export/data/wines.json
 backup/*
 !backup/.gitkeep
-wordpress-mapping.json
