@@ -6,6 +6,11 @@
   "image_export_dir": "./export/images",
   "image_resize_mode": "width",
   "image_resize_px": 1200,
+  "optimize": {
+    "enabled": true,
+    "max_height": 1400,
+    "quality": 85
+  },
   "deploy": {
     "protocol": "ftpes",
     "remote_path": "/wine_app",

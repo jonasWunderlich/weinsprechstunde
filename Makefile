@@ -16,7 +16,11 @@ PYTHON ?= $(shell [ -x .venv/bin/python ] && echo .venv/bin/python || command -v
 FORCE_IMAGES ?=
 DEPLOY_FLAGS := $(if $(FORCE_IMAGES),--force-images,)
 
-.PHONY: prepare export image-export deploy all
+.PHONY: optimize-images prepare export image-export deploy all
+
+## optimize-images: Originalbilder im Import-Ordner auf max. Höhe skalieren (in-place)
+optimize-images:
+	$(PYTHON) scripts/weinimport.py optimize-images
 
 ## prepare: JSON-Quelldateien aufbereiten (Phase prepare)
 prepare:
@@ -30,15 +34,15 @@ export:
 image-export:
 	$(PYTHON) scripts/weinimport.py image-export
 
-## all: prepare -> export -> image-export (ohne deploy)
-all: prepare export image-export
+## all: optimize-images -> prepare -> export -> image-export (ohne deploy)
+all: optimize-images prepare export image-export
 
 ## deploy: vollständige Pipeline inkl. Angular-Build und Server-Upload
 ## (FORCE_IMAGES=1 lädt ALLE Bilder neu hoch). Gebaut werden die öffentliche
 ## Weinliste (frontend/dist/weinliste/browser/) UND die statische Editor-App
 ## (frontend/dist/editor/browser/); die Deploy-Phase lädt beide hoch – den
 ## Editor in seinen eigenen Remote-Unterordner (deploy.remote_editor_path).
-deploy: prepare export image-export
+deploy: optimize-images prepare export image-export
 	cd frontend && npm run build
 	cd frontend && npm run build:editor
 	$(PYTHON) scripts/weinimport.py deploy $(DEPLOY_FLAGS)

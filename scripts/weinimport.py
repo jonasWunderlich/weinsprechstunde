@@ -101,6 +101,20 @@ class DeployConfig:
 
 
 @dataclass
+class OptimizeConfig:
+    """Einstellungen der Bildoptimierung im Import-Ordner (Phase optimize-images).
+
+    Verkleinert Originalbilder im ``import_dir`` **in-place** auf eine maximale Höhe.
+    Nur Bilder, deren Höhe ``max_height`` überschreitet, werden angefasst – dadurch ist
+    die Phase idempotent und berührt effektiv nur neu hinzugekommene (zu große) Bilder.
+    """
+
+    enabled: bool = True
+    max_height: int = 1400
+    quality: int = 85
+
+
+@dataclass
 class EditorConfig:
     path: str  # URL-Pfad des Editors
     password_hash: str  # bcrypt-Hash
@@ -118,6 +132,7 @@ class Config:
     deploy: DeployConfig
     editor: EditorConfig
     backup: Optional[BackupConfig] = None
+    optimize: Optional[OptimizeConfig] = None
 
 
 # ---------------------------------------------------------------------------
@@ -143,6 +158,7 @@ def load_config(path: str = CONFIG_PATH) -> Config:
     deploy = DeployConfig(**raw["deploy"])
     editor = EditorConfig(**raw["editor"])
     backup = BackupConfig(**raw["backup"]) if raw.get("backup") else None
+    optimize = OptimizeConfig(**raw["optimize"]) if raw.get("optimize") else OptimizeConfig()
 
     # Secrets-Auflösung: strikt Config > Secrets-Datei > Env.
     # 1) Optionale Secrets-Datei neben der Config lesen; fehlende Datei ist
@@ -178,6 +194,7 @@ def load_config(path: str = CONFIG_PATH) -> Config:
         deploy=deploy,
         editor=editor,
         backup=backup,
+        optimize=optimize,
     )
 
 
@@ -558,6 +575,95 @@ def download_remote_import(config: Config, password: str) -> None:
 # ---------------------------------------------------------------------------
 # Phase prepare
 # ---------------------------------------------------------------------------
+
+
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+
+
+def collect_image_files(import_dir: str) -> list[Path]:
+    """Rekursiv alle Bilddateien in ``import_dir`` erfassen; ``_archive`` wird
+    vollständig übersprungen (konsistent mit ``collect_json_files``, Req 17.51)."""
+    root = Path(import_dir)
+    return sorted(
+        p
+        for p in root.rglob("*")
+        if p.is_file()
+        and p.suffix.lower() in IMAGE_EXTENSIONS
+        and ARCHIVE_DIR_NAME not in p.relative_to(root).parts
+    )
+
+
+def optimize_image(path: Path, max_height: int, quality: int) -> bool:
+    """Skaliert ein einzelnes Bild **in-place** auf ``max_height`` (Höhe), sofern es
+    höher ist; Seitenverhältnis bleibt erhalten. Gibt ``True`` zurück, wenn das Bild
+    verkleinert wurde, sonst ``False`` (bereits klein genug / übersprungen).
+
+    Nur Bilder, deren Höhe ``max_height`` überschreitet, werden angefasst – dadurch ist
+    die Optimierung idempotent und berührt effektiv nur neu hinzugekommene zu große
+    Bilder. JPEG wird progressiv/optimiert, PNG mit maximaler Kompression gespeichert;
+    die EXIF-Ausrichtung wird vor dem Skalieren angewandt.
+    """
+    from PIL import Image, ImageOps
+
+    with Image.open(path) as opened:
+        _, height = opened.size
+        if height <= max_height:
+            return False
+
+        img = ImageOps.exif_transpose(opened)
+        width, height = img.size
+        scale = max_height / height
+        new_width = max(1, round(width * scale))
+        img = img.resize((new_width, max_height), Image.Resampling.LANCZOS)
+
+        suffix = path.suffix.lower()
+        if suffix in {".jpg", ".jpeg"}:
+            if img.mode not in ("RGB", "L"):
+                if img.mode == "RGBA":
+                    background = Image.new("RGB", img.size, (255, 255, 255))
+                    background.paste(img, mask=img.getchannel("A"))
+                    img = background
+                else:
+                    img = img.convert("RGB")
+            img.save(path, format="JPEG", quality=quality, optimize=True, progressive=True)
+        elif suffix == ".png":
+            img.save(path, format="PNG", optimize=True, compress_level=9)
+        elif suffix == ".webp":
+            img.save(path, format="WEBP", quality=quality, method=6)
+        else:
+            return False
+        return True
+
+
+def phase_optimize_images(config: Config) -> None:
+    """Verkleinert zu große Originalbilder im ``import_dir`` in-place (eine maximale
+    Höhe). Läuft vor prepare/export, damit die weitere Pipeline und der Editor mit den
+    bereits optimierten Bildern arbeiten. ``_archive`` wird übersprungen.
+
+    Idempotent: Bilder bis ``max_height`` bleiben unangetastet, daher werden bei jedem
+    Lauf praktisch nur neu hinzugekommene, zu große Bilder skaliert.
+    """
+    opt = config.optimize or OptimizeConfig()
+    if not opt.enabled:
+        return
+
+    scaled = 0
+    skipped = 0
+    failed = 0
+    for image in collect_image_files(config.import_dir):
+        try:
+            if optimize_image(image, opt.max_height, opt.quality):
+                scaled += 1
+            else:
+                skipped += 1
+        except Exception as e:  # noqa: BLE001 – defekte/unlesbare Datei soll die Phase nicht abbrechen
+            failed += 1
+            sys.stderr.write(f"WARNUNG: optimize-images – {image}: {e}\n")
+
+    sys.stderr.write(
+        f"optimize-images: {scaled} skaliert (max. Höhe {opt.max_height}px), "
+        f"{skipped} bereits klein genug, {failed} fehlerhaft.\n"
+    )
 
 
 def phase_prepare(config: Config, schema: list[SchemaField]) -> None:
@@ -1075,11 +1181,12 @@ def _ftp_prune(ftp: "ftplib.FTP", remote_base: str, keep: set[str],
 
 
 def _run_full_pipeline(config: Config, schema: list[SchemaField]) -> None:
-    """backup -> [remote-download] -> prepare -> export -> image-export (NICHT deploy)."""
+    """backup -> [remote-download] -> optimize-images -> prepare -> export -> image-export (NICHT deploy)."""
     phase_backup(config)
     if config.import_source == "remote":
         password = resolve_password(config)
         download_remote_import(config, password)
+    phase_optimize_images(config)
     phase_prepare(config, schema)
     phase_export(config)
     phase_image_export(config)
@@ -1090,13 +1197,20 @@ def build_parser() -> argparse.ArgumentParser:
         prog="weinimport.py",
         description=(
             "Weinsprechstunde Import-Skript. Ohne Phasen-Argument läuft die "
-            "Pipeline backup -> prepare -> export -> image-export (ohne deploy)."
+            "Pipeline backup -> optimize-images -> prepare -> export -> image-export (ohne deploy)."
         ),
     )
     parser.add_argument(
         "phase",
         nargs="?",
-        choices=["backup", "prepare", "export", "image-export", "deploy"],
+        choices=[
+            "backup",
+            "optimize-images",
+            "prepare",
+            "export",
+            "image-export",
+            "deploy",
+        ],
         help="Einzelne Phase ausführen. Ohne Angabe läuft die volle Pipeline.",
     )
     parser.add_argument(
@@ -1130,6 +1244,11 @@ def main(argv: Optional[list[str]] = None) -> None:
 
     if args.phase == "backup":
         phase_backup(config)
+    elif args.phase == "optimize-images":
+        if config.import_source == "remote":
+            password = resolve_password(config)
+            download_remote_import(config, password)
+        phase_optimize_images(config)
     elif args.phase == "prepare":
         if config.import_source == "remote":
             password = resolve_password(config)
