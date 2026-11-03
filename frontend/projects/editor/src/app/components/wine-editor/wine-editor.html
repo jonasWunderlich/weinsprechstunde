@@ -1,0 +1,355 @@
+@let item = state.selectedItem();
+
+<div class="wine-editor">
+  @if (!item) {
+    <p class="wine-editor__empty">Wähle links einen Eintrag aus, um ihn hier zu bearbeiten.</p>
+  } @else if (item.kind === 'unknown') {
+    <header class="wine-editor__header">
+      <h2 class="wine-editor__title wine-editor__title--placeholder">{{ item.placeholder }}</h2>
+      @if (item.sortDate) {
+        <span class="wine-editor__date">{{ item.sortDate }}</span>
+      }
+    </header>
+    <p class="wine-editor__note">
+      Unbekannter Wein (Bild ohne JSON). Klick auf das Bild in der Liste legt einen neuen
+      Eintrag an.
+    </p>
+    @if (fromImageError(); as err) {
+      <div class="wine-editor__status wine-editor__status--error" role="alert" data-testid="from-image-error">
+        {{ err }}
+      </div>
+    }
+    @if (archiveError(); as err) {
+      <div class="wine-editor__status wine-editor__status--error" role="alert" data-testid="archive-error">
+        {{ err }}
+      </div>
+    }
+    <p class="wine-editor__file">Bild: {{ item.image.path }}</p>
+
+    <!-- Ungenutztes Bild archivieren (kein Löschen, Req 17.44/17.46) -->
+    <div class="wine-editor__archive">
+      <button type="button" (click)="archiveImage()" data-testid="archive-image">
+        Bild archivieren
+      </button>
+      <p class="wine-editor__note">
+        Verschiebt das Bild in den <code>_archive</code>-Ordner. Endgültiges Löschen erfolgt
+        manuell im Dateisystem.
+      </p>
+    </div>
+  } @else {
+    <header class="wine-editor__header">
+      <h2 class="wine-editor__title" [class.wine-editor__title--placeholder]="incomplete()">
+        @if (isPresent(item.wine?.name)) {
+          {{ item.wine?.name }}
+        } @else {
+          (ohne Namen)
+        }
+      </h2>
+      @if (incomplete()) {
+        <span class="wine-editor__badge" title="Kein Name gesetzt">unvollständig</span>
+      }
+      @if (item.sortDate) {
+        <span class="wine-editor__date">{{ item.sortDate }}</span>
+      }
+    </header>
+
+    <!-- Speicherstatus-Indikator (Req 17.23/17.24/17.25) -->
+    @let s = saveState();
+    <div
+      class="wine-editor__status"
+      [class.wine-editor__status--success]="s.status === 'success'"
+      [class.wine-editor__status--saving]="s.status === 'saving'"
+      [class.wine-editor__status--error]="s.status === 'error'"
+      [class.wine-editor__status--conflict]="s.status === 'conflict'"
+      role="status"
+      aria-live="polite"
+      data-testid="save-status"
+    >
+      @switch (s.status) {
+        @case ('saving') {
+          Speichern …
+        }
+        @case ('success') {
+          Gespeichert
+        }
+        @case ('error') {
+          Fehler beim Speichern: {{ s.error }}
+        }
+        @case ('conflict') {
+          Die Datei wurde extern verändert.
+        }
+        @default {
+          Bereit
+        }
+      }
+    </div>
+
+    @if (fromImageError(); as err) {
+      <div
+        class="wine-editor__status wine-editor__status--error"
+        role="alert"
+        data-testid="from-image-error"
+      >
+        {{ err }}
+      </div>
+    }
+
+    @if (archiveError(); as err) {
+      <div
+        class="wine-editor__status wine-editor__status--error"
+        role="alert"
+        data-testid="archive-error"
+      >
+        {{ err }}
+      </div>
+    }
+
+    @if (s.status === 'conflict') {
+      <div class="wine-editor__conflict" data-testid="conflict-banner">
+        <p>
+          Diese Datei wurde seit dem Laden extern verändert (z. B. durch die Cloud-Synchronisation).
+          Soll der aktuelle Stand trotzdem überschrieben werden?
+        </p>
+        <div class="wine-editor__conflict-actions">
+          <button type="button" (click)="confirmOverwrite()" data-testid="conflict-overwrite">
+            Überschreiben
+          </button>
+          <button type="button" (click)="dismissConflict()">Abbrechen</button>
+        </div>
+      </div>
+    }
+
+    <form class="wine-editor__form" (submit)="$event.preventDefault()">
+      @for (field of fields(); track field.schema.field) {
+        <div class="wine-editor__field" [attr.data-field]="field.schema.field">
+          <label class="wine-editor__label" [attr.for]="'wine-editor-' + field.schema.field">
+            {{ field.schema.field }}
+          </label>
+
+          @switch (field.kind) {
+            <!-- Datepicker für tasting_date (Req 17.16) -->
+            @case ('date') {
+              <input
+                [id]="'wine-editor-' + field.schema.field"
+                type="date"
+                [value]="value(field.schema.field)"
+                (input)="onInput(field, $any($event.target).value)"
+              />
+            }
+
+            <!-- Rating-Zahleneingabe 1.0–10.0 Step 0.1 (Req 17.16) -->
+            @case ('rating') {
+              <input
+                [id]="'wine-editor-' + field.schema.field"
+                type="number"
+                min="1"
+                max="10"
+                step="0.1"
+                [value]="value(field.schema.field)"
+                (input)="onInput(field, $any($event.target).value)"
+              />
+            }
+
+            <!-- Übrige Zahlen-Felder (year, price) -->
+            @case ('number') {
+              <input
+                [id]="'wine-editor-' + field.schema.field"
+                type="text"
+                inputmode="decimal"
+                [value]="value(field.schema.field)"
+                (input)="onInput(field, $any($event.target).value)"
+              />
+            }
+
+            <!-- grape als Tag-/Chip-Eingabe mit Autocomplete → Array (Req 17.18) -->
+            @case ('chips') {
+              <div class="wine-editor__chips">
+                @for (tag of chips(field.schema.field); track tag) {
+                  <span class="wine-editor__chip">
+                    {{ tag }}
+                    <button
+                      type="button"
+                      class="wine-editor__chip-remove"
+                      (click)="removeChip(field.schema.field, tag)"
+                      [attr.aria-label]="'Entfernen: ' + tag"
+                    >
+                      ×
+                    </button>
+                  </span>
+                }
+                <input
+                  [id]="'wine-editor-' + field.schema.field"
+                  type="text"
+                  [attr.list]="listId(field.schema.field)"
+                  placeholder="Rebsorte hinzufügen …"
+                  (keydown.enter)="
+                    addChip(field.schema.field, $any($event.target).value);
+                    $any($event.target).value = '';
+                    $event.preventDefault()
+                  "
+                  (change)="
+                    addChip(field.schema.field, $any($event.target).value);
+                    $any($event.target).value = ''
+                  "
+                />
+                <datalist [id]="listId(field.schema.field)">
+                  @for (s of field.suggestions; track s) {
+                    <option [value]="s"></option>
+                  }
+                </datalist>
+              </div>
+            }
+
+            <!-- Dropdown/Multi-Select: Auswahl aus vorhandenen Werten (Req 17.17) -->
+            @case ('dropdown') {
+              <input
+                [id]="'wine-editor-' + field.schema.field"
+                type="text"
+                [attr.list]="listId(field.schema.field)"
+                [value]="value(field.schema.field)"
+                (input)="onInput(field, $any($event.target).value)"
+              />
+              <datalist [id]="listId(field.schema.field)">
+                @for (s of field.suggestions; track s) {
+                  <option [value]="s"></option>
+                }
+              </datalist>
+            }
+
+            <!-- ImagePicker für das image-Feld (Req 17.28–17.35) -->
+            @case ('image') {
+              <div class="wine-editor__image">
+                <input
+                  [id]="'wine-editor-' + field.schema.field"
+                  type="text"
+                  readonly
+                  [value]="value(field.schema.field)"
+                  placeholder="kein Bild"
+                />
+                @if (isPresent(value(field.schema.field))) {
+                  <button type="button" (click)="clearImage()" data-testid="image-clear">
+                    Entfernen
+                  </button>
+                }
+                <app-image-picker
+                  [images]="images()"
+                  [selected]="value(field.schema.field)"
+                  (pick)="pickImage($event)"
+                />
+              </div>
+            }
+
+            <!-- Audio-/Video-Picker (Req 17.19/17.35) -->
+            @case ('media') {
+              <div class="wine-editor__media">
+                <input
+                  [id]="'wine-editor-' + field.schema.field"
+                  type="text"
+                  readonly
+                  [value]="value(field.schema.field)"
+                  placeholder="keine Datei"
+                />
+                <button
+                  type="button"
+                  (click)="loadMedia(field.mediaKind!)"
+                  [attr.data-testid]="'media-load-' + field.schema.field"
+                >
+                  Dateien anzeigen
+                </button>
+                @if (isPresent(value(field.schema.field))) {
+                  <button type="button" (click)="clearMedia(field.schema.field)">Entfernen</button>
+                }
+                @let files = field.mediaKind === 'audio' ? audioFiles() : videoFiles();
+                @if (files.length > 0) {
+                  <ul class="wine-editor__media-list">
+                    @for (m of files; track m.path) {
+                      <li>
+                        <button
+                          type="button"
+                          (click)="pickMedia(field.schema.field, m)"
+                          [attr.data-testid]="'media-pick-' + m.name"
+                        >
+                          {{ m.name }}
+                        </button>
+                      </li>
+                    }
+                  </ul>
+                }
+              </div>
+            }
+
+            <!-- Übrige Textfelder mit Autocomplete (Req 17.17) -->
+            @default {
+              @if (field.schema.field === 'name' && isProvisional()) {
+                <!-- name-Feld eines per Bildklick angelegten Eintrags: Autocomplete
+                     bildloser Einträge, genau zwei Wege (Req 17.38/17.39/17.40/17.41) -->
+                <input
+                  [id]="'wine-editor-' + field.schema.field"
+                  type="text"
+                  [attr.list]="listId(field.schema.field)"
+                  [value]="value(field.schema.field)"
+                  placeholder="Neuen Namen eingeben oder bestehenden bildlosen Wein wählen …"
+                  (input)="onProvisionalNameInput(field, $any($event.target).value)"
+                  (change)="onProvisionalNameInput(field, $any($event.target).value)"
+                  data-testid="provisional-name-input"
+                />
+                <datalist [id]="listId(field.schema.field)">
+                  @for (s of imagelessSuggestions(); track s.path) {
+                    <option [value]="s.name"></option>
+                  }
+                </datalist>
+                <p class="wine-editor__note">
+                  Eigenen neuen Namen eingeben (Eintrag bleibt) oder einen bestehenden bildlosen
+                  Wein wählen (Bild wird mit ihm verknüpft).
+                </p>
+              } @else {
+                <input
+                  [id]="'wine-editor-' + field.schema.field"
+                  type="text"
+                  [attr.list]="listId(field.schema.field)"
+                  [value]="value(field.schema.field)"
+                  (input)="onInput(field, $any($event.target).value)"
+                />
+                @if (field.suggestions.length > 0) {
+                  <datalist [id]="listId(field.schema.field)">
+                    @for (s of field.suggestions; track s) {
+                      <option [value]="s"></option>
+                    }
+                  </datalist>
+                }
+              }
+            }
+          }
+        </div>
+      }
+
+      <!-- Schema-fremde Felder: anzeigen und erhalten (Req 17.27) -->
+      @if (extraFields().length > 0) {
+        <fieldset class="wine-editor__extras" data-testid="extra-fields">
+          <legend>Weitere Felder (nicht im Schema)</legend>
+          @for (extra of extraFields(); track extra.key) {
+            <div class="wine-editor__field wine-editor__field--extra">
+              <label class="wine-editor__label">{{ extra.key }}</label>
+              <span class="wine-editor__extra-value">{{ extra.value }}</span>
+            </div>
+          }
+          <p class="wine-editor__note">Diese Felder bleiben beim Speichern unverändert erhalten.</p>
+        </fieldset>
+      }
+    </form>
+
+    <p class="wine-editor__file">Datei: {{ item.entry.path }}</p>
+
+    <!-- Eintrag archivieren (kein Löschen, Req 17.44/17.47) -->
+    <div class="wine-editor__archive">
+      <button type="button" (click)="archiveEntry()" data-testid="archive-entry">
+        Eintrag archivieren
+      </button>
+      <p class="wine-editor__note">
+        Verschiebt die JSON-Quelldatei samt verknüpfter Bild-/Audio-/Video-Dateien in den
+        <code>_archive</code>-Ordner. Es gibt bewusst keine Lösch-Funktion; endgültiges
+        Löschen und Zurückholen erfolgen manuell im Dateisystem.
+      </p>
+    </div>
+  }
+</div>

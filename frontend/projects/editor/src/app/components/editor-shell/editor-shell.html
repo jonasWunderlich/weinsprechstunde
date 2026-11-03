@@ -1,0 +1,53 @@
+@if (!fsa.apiSupported) {
+  <div class="editor-shell__gate">
+    <h1>Wine Editor</h1>
+    <p class="editor-shell__hint">
+      Dieser Editor benötigt die File System Access API und läuft ausschließlich in
+      Chromium-basierten Browsern (Chrome/Edge).
+    </p>
+  </div>
+} @else if (!fsa.hasAccess()) {
+  <div class="editor-shell__gate">
+    <h1>Wine Editor</h1>
+    @if (restoring()) {
+      <p class="editor-shell__hint">Stelle den Zugriff auf den freigegebenen Ordner wieder her…</p>
+    } @else {
+      <p class="editor-shell__hint">
+        Gib den Cloud-Ordner (Import-Verzeichnis) frei, um die Weineinträge zu bearbeiten.
+      </p>
+      <button type="button" class="editor-shell__grant" (click)="grantAccess()">
+        Ordner freigeben
+      </button>
+    }
+  </div>
+} @else {
+  <header class="editor-shell__topbar">
+    <span class="editor-shell__dir">📁 {{ fsa.directoryName() }}</span>
+    <button
+      type="button"
+      class="editor-shell__refresh"
+      [disabled]="state.loading()"
+      (click)="refresh()"
+    >
+      @if (state.loading()) {
+        Aktualisiere…
+      } @else {
+        Aktualisieren
+      }
+    </button>
+  </header>
+
+  @if (state.error(); as err) {
+    <p class="editor-shell__error" role="alert">Fehler beim Laden: {{ err }}</p>
+  }
+
+  <div class="editor-shell__columns">
+    <section class="editor-shell__left" aria-label="Eintragsliste">
+      <app-editor-controls />
+      <app-editor-list />
+    </section>
+    <section class="editor-shell__right" aria-label="WineEditor">
+      <app-wine-editor />
+    </section>
+  </div>
+}

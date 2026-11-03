@@ -1,0 +1,69 @@
+<div class="image-picker" data-testid="image-picker">
+  <div class="image-picker__controls">
+    <!-- Umschalt-Button ungenutzt/alle (Req 17.29) -->
+    <button
+      type="button"
+      class="image-picker__toggle"
+      (click)="toggleShowAll()"
+      [attr.aria-pressed]="showAll()"
+      data-testid="image-picker-toggle"
+    >
+      @if (showAll()) {
+        Alle Bilder
+      } @else {
+        Nur ungenutzte
+      }
+    </button>
+
+    <!-- Datum-Sortierung (Req 17.30) -->
+    <button
+      type="button"
+      class="image-picker__sort"
+      (click)="toggleSort()"
+      data-testid="image-picker-sort"
+    >
+      @if (sort() === 'desc') {
+        Datum ↓
+      } @else {
+        Datum ↑
+      }
+    </button>
+
+    <!-- Dateinamen-Filter (Req 17.31) -->
+    <input
+      type="search"
+      class="image-picker__filter"
+      placeholder="Dateiname filtern …"
+      [value]="nameFilter()"
+      (input)="setFilter($any($event.target).value)"
+      aria-label="Bilder nach Dateiname filtern"
+      data-testid="image-picker-filter"
+    />
+  </div>
+
+  @let items = visibleImages();
+  @if (items.length === 0) {
+    <p class="image-picker__empty">Keine passenden Bilder.</p>
+  } @else {
+    <ul class="image-picker__grid" data-testid="image-picker-grid">
+      @for (img of items; track img.path) {
+        <li class="image-picker__item">
+          <button
+            type="button"
+            class="image-picker__select"
+            [class.image-picker__select--active]="img.name === selected()"
+            (click)="select(img)"
+            [attr.data-testid]="'image-picker-select-' + img.name"
+            [title]="img.name"
+          >
+            <app-entry-thumbnail [path]="img.path" [alt]="img.name" />
+            <span class="image-picker__name">{{ img.name }}</span>
+            @if (img.assigned) {
+              <span class="image-picker__badge" title="Bereits zugeordnet">genutzt</span>
+            }
+          </button>
+        </li>
+      }
+    </ul>
+  }
+</div>

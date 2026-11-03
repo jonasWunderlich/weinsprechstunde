@@ -1,0 +1,49 @@
+<ul class="editor-list" role="listbox" aria-label="Weineinträge">
+  @for (item of state.listItems(); track trackItem($index, item)) {
+    <li
+      class="editor-list__item"
+      role="option"
+      [class.editor-list__item--selected]="isSelected(item)"
+      [class.editor-list__item--broken]="item.kind === 'created' && item.broken"
+      [class.editor-list__item--incomplete]="item.kind === 'created' && item.incomplete"
+      [class.editor-list__item--unknown]="item.kind === 'unknown'"
+      [attr.aria-selected]="isSelected(item)"
+      [attr.aria-disabled]="item.kind === 'created' && item.broken ? true : null"
+      (click)="select(item)"
+    >
+      @if (item.kind === 'unknown') {
+        <button
+          type="button"
+          class="editor-list__image-button"
+          (click)="onImageClick(item, $event)"
+          [attr.aria-label]="'Weineintrag aus diesem Bild anlegen'"
+          data-testid="unknown-image-create"
+        >
+          <app-entry-thumbnail [path]="imagePath(item)" [alt]="title(item)" />
+        </button>
+      } @else {
+        <app-entry-thumbnail [path]="imagePath(item)" [alt]="title(item)" />
+      }
+
+      <div class="editor-list__body">
+        <span class="editor-list__title">{{ title(item) }}</span>
+        <span class="editor-list__meta">
+          @if (date(item); as d) {
+            <span class="editor-list__date">{{ d }}</span>
+          } @else {
+            <span class="editor-list__date editor-list__date--none">kein Datum</span>
+          }
+          @if (item.kind === 'created' && item.broken) {
+            <span class="editor-list__badge editor-list__badge--broken">fehlerhaft</span>
+          } @else if (item.kind === 'created' && item.incomplete) {
+            <span class="editor-list__badge editor-list__badge--incomplete">unvollständig</span>
+          } @else if (item.kind === 'unknown') {
+            <span class="editor-list__badge editor-list__badge--unknown">unbekannt</span>
+          }
+        </span>
+      </div>
+    </li>
+  } @empty {
+    <li class="editor-list__empty">Keine Einträge.</li>
+  }
+</ul>

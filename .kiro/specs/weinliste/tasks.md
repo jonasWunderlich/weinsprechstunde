@@ -392,17 +392,17 @@ Property-Tests: `hypothesis` (Python, pytest), `fast-check` (Angular, vitest + j
     - Schließen des WineDetailDialogs bei `Escape`, kein Auslösen bei geschlossenem Dialog, Guards (Eingabefeld, Modifier)
     - _Requirements: 10.4, 10.6, 10.13_
 
-- [ ] 24. Checkpoint - Öffentliches Angular Frontend vollständig
+- [x] 24. Checkpoint - Öffentliches Angular Frontend vollständig
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 25. Wine Editor: Angular-Workspace-Umbau (shared/weinliste/editor)
-  - [ ] 25.1 `frontend/` zu einem Angular-Workspace mit drei Projekten umstrukturieren
+- [x] 25. Wine Editor: Angular-Workspace-Umbau (shared/weinliste/editor)
+  - [x] 25.1 `frontend/` zu einem Angular-Workspace mit drei Projekten umstrukturieren
     - `angular.json`, `package.json` und `tsconfig` so umbauen, dass der Workspace die Projekte `projects/shared` (Library `@weinsprechstunde/shared`), `projects/weinliste` (bestehende öffentliche App) und `projects/editor` (neue Editor-App) definiert
     - TypeScript-Pfad-Alias `@weinsprechstunde/shared` einrichten
     - Den bisherigen Code der öffentlichen App nach `projects/weinliste/` verschieben, ohne ihre Funktion zu brechen (gleiche Komponenten, gleicher Build-Output-Bezug `frontend/dist/weinliste/browser/` für die Deploy-Phase)
     - _Requirements: 17.1, 17.11_
 
-  - [ ] 25.2 Geteilte Logik in `projects/shared` extrahieren
+  - [x] 25.2 Geteilte Logik in `projects/shared` extrahieren
     - FilterService, Wine-Models, WineSchema-Verarbeitung sowie Filter-/Such-/Sortierlogik (`applyFiltersAndSort`) aus der öffentlichen App nach `@weinsprechstunde/shared` verschieben und von `projects/weinliste` über den Alias importieren — ohne Duplizierung und ohne die öffentliche App zu brechen
     - _Requirements: 17.11, 15.10_
 
@@ -410,8 +410,8 @@ Property-Tests: `hypothesis` (Python, pytest), `fast-check` (Angular, vitest + j
     - FilterService/`applyFiltersAndSort` aus `@weinsprechstunde/shared` liefern dieselben Ergebnisse; die bestehenden Properties 10, 11, 14 laufen gegen die Library
     - _Requirements: 17.11_
 
-- [ ] 26. Wine Editor: FileSystemAccessService (File System Access API)
-  - [ ] 26.1 `FileSystemAccessService` in `projects/editor` implementieren
+- [x] 26. Wine Editor: FileSystemAccessService (File System Access API)
+  - [x] 26.1 `FileSystemAccessService` in `projects/editor` implementieren
     - Ordner-Freigabe über `window.showDirectoryPicker()`; Ordner-Handle in IndexedDB persistieren und bei erneutem Öffnen mit kurzer Re-Autorisierung wiederherstellen
     - Chromium-only: bei fehlender File System Access API verständlichen Hinweis anzeigen (kein Editor)
     - Verzeichnis scannen (JSON/Bilder/Medien), `_archive` vollständig ignorieren; Datei lesen/schreiben/anlegen/verschieben; Bild-Listing mit `name`/`date`/`assigned`; Bildtypen `.jpg/.jpeg/.png/.webp` case-insensitive
@@ -419,26 +419,26 @@ Property-Tests: `hypothesis` (Python, pytest), `fast-check` (Angular, vitest + j
     - Zugriff bleibt durch die Browser-API technisch auf den freigegebenen `import_dir` beschränkt (keine anwendungsseitige Pfadprüfung nötig)
     - _Requirements: 16.1, 16.2, 16.3, 17.1, 17.2, 17.3, 17.4, 17.28, 17.32, 17.33_
 
-  - [ ]* 26.2 Property-Test Zugriff bleibt auf den freigegebenen Ordner beschränkt
+  - [x]* 26.2 Property-Test Zugriff bleibt auf den freigegebenen Ordner beschränkt
     - **Property 26: Zugriff bleibt auf den freigegebenen Ordner beschränkt**
     - **Validates: Requirements 16.2**
     - Tag: `// Feature: weinliste, Property 26: ...`
 
-  - [ ]* 26.3 Property-Test clientseitiges Thumbnail lässt Original unverändert
+  - [x]* 26.3 Property-Test clientseitiges Thumbnail lässt Original unverändert
     - **Property 23: Clientseitiges Thumbnail lässt Original unverändert und erhält Seitenverhältnis**
     - **Validates: Requirements 17.33**
     - Tag: `// Feature: weinliste, Property 23: ...`
 
-- [ ] 27. Wine Editor: Zwei-Spalten-Layout und Eintragsliste
-  - [ ] 27.1 Editor-Shell, Liste und Eintragstyp-Filter implementieren
+- [x] 27. Wine Editor: Zwei-Spalten-Layout und Eintragsliste
+  - [x] 27.1 Editor-Shell, Liste und Eintragstyp-Filter implementieren
     - Zwei-Spalten-Layout (Eintragsliste links, WineEditor rechts); kein Login-Screen, Start ohne Anmeldung
     - Liste über den geteilten FilterService/ControlsRow (attributbasierte Filter/Suche/Sortierung) plus Eintragstyp-Filter mit drei Zuständen „Alle"/„Nur angelegte"/„Nur unbekannte"; Auto-Umschalten „Nur unbekannte" → „Nur angelegte" bei attributbasierter Eingabe
     - Standard-Sortierung absteigend nach `tasting_date` (angelegte + unbekannte gemischt, undatierte ans Ende); unbekannte Weine mit Platzhalter „unbekannter Wein", ermitteltem `tasting_date` und Bildvorschau
     - Auto-Refresh der Liste nach eigener Aktion (Anlegen/Archivieren/Verknüpfen/Speichern) + manueller Aktualisieren-Button (kein Polling); Auswahl zeigt Eintrag rechts im WineEditor
     - _Requirements: 17.6, 17.7, 17.8, 17.9, 17.10, 17.11, 17.12, 17.13, 17.14, 17.15_
 
-- [ ] 28. Wine Editor: WineEditor-Formular mit Live-Auto-Save
-  - [ ] 28.1 WineEditor-Formular implementieren
+- [x] 28. Wine Editor: WineEditor-Formular mit Live-Auto-Save
+  - [x] 28.1 WineEditor-Formular implementieren
     - Dynamische Eingabefelder aus WineSchema; Datepicker für `tasting_date`, Zahleneingabe `rating` 1.0–10.0 Schritt 0.1
     - Dropdown/Multi-Select-Werte aus vorhandenen Einträgen, Autocomplete für übrige Textfelder; `grape` als Tag-/Chip-Eingabe mit Autocomplete → Array
     - Medien-Picker für `audio`/`video` (analog ImagePicker) übernimmt Dateinamen
@@ -461,15 +461,15 @@ Property-Tests: `hypothesis` (Python, pytest), `fast-check` (Angular, vitest + j
     - **Validates: Requirements 17.27**
     - Tag: `// Feature: weinliste, Property 28: ...`
 
-- [ ] 29. Wine Editor: ImagePicker
-  - [ ] 29.1 ImagePicker implementieren
+- [x] 29. Wine Editor: ImagePicker
+  - [x] 29.1 ImagePicker implementieren
     - Galerie der Bilddateien im `import_dir` mit clientseitigen Thumbnails; standardmäßig nur ungenutzte Bilder
     - Umschalt-Button ungenutzt/alle, Datum-Sortierung, Dateiname-Filter; Bildtypen `.jpg/.jpeg/.png/.webp` case-insensitive
     - Auswahl → Dateiname in das `image`-Feld des aktuellen Eintrags übernehmen (nur Dateiname ohne Pfad)
     - _Requirements: 17.28, 17.29, 17.30, 17.31, 17.32, 17.33, 17.34, 17.35_
 
-- [ ] 30. Wine Editor: Bildklick-Anlegen und name-Verknüpfung
-  - [ ] 30.1 From-image-Anlegen und link-image implementieren
+- [x] 30. Wine Editor: Bildklick-Anlegen und name-Verknüpfung
+  - [x] 30.1 From-image-Anlegen und link-image implementieren
     - Klick auf das Bild eines unbekannten Weins legt per File System Access API eine vorläufige JSON im selben Unterordner an (Basisname des Bildes + `.json`), alle Schema-Felder `null` außer `image` (Bild-Dateiname) und `tasting_date` (EXIF `DateTimeOriginal` oder `null`); keine Umbenennung (bleibt der PhasePreparate überlassen)
     - `name`-Autocomplete schlägt bestehende bildlose Einträge vor; genau zwei Eingabewege: eigener neuer Name (behält den vorläufigen Eintrag) oder Auswahl eines bestehenden Eintrags
     - Bei Auswahl eines bestehenden Eintrags: vorläufige JSON entfernen, dessen `image`-Feld setzen, Bild bei Bedarf in dessen Verzeichnis verschieben, fortan den bestehenden Eintrag bearbeiten → genau eine JSON pro Wein; bei Fehler erkennbare Fehleranzeige ohne doppelte JSON
@@ -485,24 +485,24 @@ Property-Tests: `hypothesis` (Python, pytest), `fast-check` (Angular, vitest + j
     - **Validates: Requirements 17.41, 17.42, 17.43**
     - Tag: `// Feature: weinliste, Property 25: ...`
 
-- [ ] 31. Wine Editor: Archivierung und _archive-Ignorierung
-  - [ ] 31.1 Archivierungs-Aktionen implementieren
+- [x] 31. Wine Editor: Archivierung und _archive-Ignorierung
+  - [x] 31.1 Archivierungs-Aktionen implementieren
     - Keine Lösch-Funktion; `_archive`-Ordner als `import_dir/_archive/`
     - Ungenutztes Bild archivieren = Bild nach `_archive` verschieben; angelegten Eintrag archivieren = JSON + referenzierte Medien (`image`/`audio`/`video`) gemeinsam nach `_archive` verschieben
     - Fehler beim Verschieben → erkennbare Fehleranzeige, Dateien bleiben am Ursprungsort; `_archive` in allen Editor-Scans vollständig ignorieren; kein Dearchivieren
     - _Requirements: 17.44, 17.45, 17.46, 17.47, 17.48, 17.49, 17.50_
 
-  - [ ] 31.2 `_archive`-Ignorierung im ImportScript ergänzen
+  - [x] 31.2 `_archive`-Ignorierung im ImportScript ergänzen
     - `collect_json_files()` im bereits implementierten ImportScript so erweitern, dass der `import_dir/_archive/`-Ordner in PhasePreparate, PhaseExport und PhaseImageExport vollständig übersprungen wird (eine zentrale Stelle)
     - _Requirements: 17.51_
 
-- [ ] 32. Wine Editor: Deploy der statischen Editor-App
-  - [ ] 32.1 Editor-Build in die Deploy-Phase aufnehmen
+- [x] 32. Wine Editor: Deploy der statischen Editor-App
+  - [x] 32.1 Editor-Build in die Deploy-Phase aufnehmen
     - `ng build editor` → `frontend/dist/editor/browser/` als statische App wie die öffentliche Weinliste auf den Webserver deployen, eigene URL im `wine_app`-Bereich
     - Deploy-Phase/Makefile minimal um den Editor-Build-Output erweitern (ausgelieferte App enthält keine Weindaten)
     - _Requirements: 16.3, 17.1_
 
-- [ ] 33. Finaler Checkpoint - Alle Subsysteme
+- [x] 33. Finaler Checkpoint - Alle Subsysteme
   - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes

@@ -38,6 +38,265 @@
         "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
         "timestamp": 1793661277904
       }
+    ],
+    "25.1 `frontend/` zu einem Angular-Workspace mit drei Projekten umstrukturieren": [
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793661515283
+      },
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793662128475
+      }
+    ],
+    "25.2 Geteilte Logik in `projects/shared` extrahieren": [
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793662146193
+      },
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793662864301
+      }
+    ],
+    "25. Wine Editor: Angular-Workspace-Umbau (shared/weinliste/editor)": [
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793662864340
+      }
+    ],
+    "26.1 `FileSystemAccessService` in `projects/editor` implementieren": [
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793662870509
+      },
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793664625979
+      }
+    ],
+    "26. Wine Editor: FileSystemAccessService (File System Access API)": [
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793664626017
+      }
+    ],
+    "24. Checkpoint - Öffentliches Angular Frontend vollständig": [
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793664643486
+      },
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793664660096
+      },
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793665036157
+      }
+    ],
+    "27.1 Editor-Shell, Liste und Eintragstyp-Filter implementieren": [
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793664643522
+      },
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793665090431
+      },
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793665796956
+      }
+    ],
+    "28.1 WineEditor-Formular implementieren": [
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793664643556
+      },
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793665800326
+      },
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793666359708
+      }
+    ],
+    "29.1 ImagePicker implementieren": [
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793664643590
+      },
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793666363009
+      },
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793666839246
+      }
+    ],
+    "30.1 From-image-Anlegen und link-image implementieren": [
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793664643633
+      },
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793666842690
+      },
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793667408053
+      }
+    ],
+    "31.1 Archivierungs-Aktionen implementieren": [
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793664643682
+      },
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793667413137
+      },
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793667857261
+      }
+    ],
+    "31.2 `_archive`-Ignorierung im ImportScript ergänzen": [
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793664643714
+      },
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793667414060
+      },
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793667858191
+      }
+    ],
+    "32.1 Editor-Build in die Deploy-Phase aufnehmen": [
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793664643747
+      },
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793667862250
+      },
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793668224792
+      }
+    ],
+    "33. Finaler Checkpoint - Alle Subsysteme": [
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793664643783
+      },
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793668229091
+      },
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793668290117
+      }
+    ],
+    "26.2 Property-Test Zugriff bleibt auf den freigegebenen Ordner beschränkt": [
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793665069323
+      }
+    ],
+    "26.3 Property-Test clientseitiges Thumbnail lässt Original unverändert": [
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793665072641
+      }
+    ],
+    "27. Wine Editor: Zwei-Spalten-Layout und Eintragsliste": [
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793665797014
+      }
+    ],
+    "28. Wine Editor: WineEditor-Formular mit Live-Auto-Save": [
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793666359745
+      }
+    ],
+    "29. Wine Editor: ImagePicker": [
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793666839311
+      }
+    ],
+    "30. Wine Editor: Bildklick-Anlegen und name-Verknüpfung": [
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793667408114
+      }
+    ],
+    "31. Wine Editor: Archivierung und _archive-Ignorierung": [
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793667858239
+      }
+    ],
+    "32. Wine Editor: Deploy der statischen Editor-App": [
+      {
+        "executionId": "19d20c28-fe08-4b1f-986b-5de97dd78d0f",
+        "chatSessionId": "sess_123d5a15-8be2-4c57-92b3-f08d777b217c",
+        "timestamp": 1793668224853
+      }
     ]
   }
 }

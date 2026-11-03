@@ -10,7 +10,8 @@
     "protocol": "ftpes",
     "remote_path": "/wine_app",
     "remote_images_path": "/wine_app/images",
-    "remote_import_path": "/wine_app/data"
+    "remote_import_path": "/wine_app/data",
+    "remote_editor_path": "/wine_app/editor"
   },
   "backup": {
     "backup_dir": "./backup",

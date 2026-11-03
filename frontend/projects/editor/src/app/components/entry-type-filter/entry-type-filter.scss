@@ -1,0 +1,25 @@
+.entry-type-filter {
+  display: inline-flex;
+  border: 1px solid #c9c4bd;
+  border-radius: 6px;
+  overflow: hidden;
+
+  &__btn {
+    appearance: none;
+    border: none;
+    background: #fff;
+    color: #3a352f;
+    padding: 0.35rem 0.75rem;
+    font-size: 0.85rem;
+    cursor: pointer;
+
+    & + & {
+      border-left: 1px solid #c9c4bd;
+    }
+
+    &--active {
+      background: #7a1f2b;
+      color: #fff;
+    }
+  }
+}

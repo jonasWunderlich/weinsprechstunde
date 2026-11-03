@@ -71,6 +71,40 @@ def test_load_config_parses_nested_dataclasses(tmp_path):
     assert config.backup.remote_backup_dir == "/var/www/backup"
     assert isinstance(config.editor, wi.EditorConfig)
     assert config.editor.path == "/editor-geheim"
+    # remote_editor_path ist optional und fällt ohne Angabe auf "" zurück
+    # (DeployConfig(**raw["deploy"]) bricht dadurch nicht).
+    assert config.deploy.remote_editor_path == ""
+
+
+def test_load_config_parses_remote_editor_path(tmp_path):
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(
+        json.dumps(
+            {
+                "import_dir": "./import",
+                "import_source": "local",
+                "export_path": "./out/wines.json",
+                "scaffold_mode": True,
+                "image_export_dir": "./export/images",
+                "image_resize_mode": "width",
+                "image_resize_px": 1200,
+                "deploy": {
+                    "protocol": "ftpes",
+                    "host": "example.com",
+                    "user": "myuser",
+                    "password": "",
+                    "remote_path": "/wine_app",
+                    "remote_images_path": "/wine_app/images",
+                    "remote_import_path": "/wine_app/data",
+                    "remote_editor_path": "/wine_app/editor",
+                },
+                "editor": {"path": "/editor-geheim", "password_hash": ""},
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = wi.load_config(str(cfg_path))
+    assert config.deploy.remote_editor_path == "/wine_app/editor"
 
 
 def test_load_config_without_backup(tmp_path):

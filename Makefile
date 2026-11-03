@@ -34,7 +34,11 @@ image-export:
 all: prepare export image-export
 
 ## deploy: vollständige Pipeline inkl. Angular-Build und Server-Upload
-## (FORCE_IMAGES=1 lädt ALLE Bilder neu hoch)
+## (FORCE_IMAGES=1 lädt ALLE Bilder neu hoch). Gebaut werden die öffentliche
+## Weinliste (frontend/dist/weinliste/browser/) UND die statische Editor-App
+## (frontend/dist/editor/browser/); die Deploy-Phase lädt beide hoch – den
+## Editor in seinen eigenen Remote-Unterordner (deploy.remote_editor_path).
 deploy: prepare export image-export
 	cd frontend && npm run build
+	cd frontend && npm run build:editor
 	$(PYTHON) scripts/weinimport.py deploy $(DEPLOY_FLAGS)

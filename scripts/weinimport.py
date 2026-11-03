@@ -85,6 +85,12 @@ class DeployConfig:
     remote_path: str
     remote_images_path: str
     remote_import_path: str
+    # Eigener Remote-Unterordner für die statische Editor-App
+    # (frontend/dist/editor/browser/). Standard: "/wine_app/editor" – eine
+    # eigene URL im wine_app-Bereich (Req 17.1). Leer = Editor-Deploy
+    # übersprungen (aus der Config entfernbar, ohne DeployConfig(**raw) zu
+    # brechen).
+    remote_editor_path: str = ""
     # host/user/password werden aus der Config, der Secrets-Datei oder aus
     # Umgebungsvariablen aufgelöst (Reihenfolge Config > Secrets > Env). Leerer
     # Default, damit aus der Config entfernte Felder DeployConfig(**raw["deploy"])
@@ -194,9 +200,25 @@ def get_scaffold_fields(schema: list[SchemaField]) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
+ARCHIVE_DIR_NAME = "_archive"
+
+
 def collect_json_files(import_dir: str) -> list[Path]:
-    """Rekursiv alle .json-Dateien in import_dir erfassen."""
-    return sorted(Path(import_dir).rglob("*.json"))
+    """Rekursiv alle .json-Dateien in import_dir erfassen.
+
+    Der Archiv-Ordner ``import_dir/_archive/`` wird vollständig übersprungen
+    (Req 17.51): Dateien darin fließen weder in prepare/export noch in den
+    Bildexport ein. Da ``collect_json_files`` die zentrale Dateierfassung aller
+    drei Phasen (prepare, export, image-export) ist, genügt diese eine Stelle –
+    keine verstreute Sonderbehandlung in den Phasen. Da der Bildexport Bilder
+    ausschließlich über das ``image``-Feld der eingesammelten JSON-Dateien
+    auflöst, bleiben auch im Archiv liegende Bilder automatisch unexportiert.
+    """
+    root = Path(import_dir)
+    return sorted(
+        p for p in root.rglob("*.json")
+        if ARCHIVE_DIR_NAME not in p.relative_to(root).parts
+    )
 
 
 def slugify_name(name: str) -> str:
@@ -774,23 +796,47 @@ def phase_deploy(config: Config, force_images: bool = False) -> None:
         sys.exit(1)
 
 
+# Name des öffentlichen Angular-Projekts im Workspace (projects/weinliste).
+# Dessen Build landet unter frontend/dist/weinliste/browser/ und ist die einzige
+# App, die diese Deploy-Phase ausliefert. Der Workspace baut daneben noch die
+# Editor-App (frontend/dist/editor/browser/) und die shared-Library – deshalb
+# wird der öffentliche Ordner hier bevorzugt aufgelöst.
+PUBLIC_APP_PROJECT = "weinliste"
+
+# Name des Editor-Angular-Projekts im Workspace (projects/editor). Dessen Build
+# landet unter frontend/dist/editor/browser/ und wird – als rein statische App
+# ohne Weindaten – zusätzlich zur öffentlichen Weinliste in den eigenen
+# Editor-Remote-Unterordner (deploy.remote_editor_path) deployt (Req 16.3, 17.1).
+EDITOR_APP_PROJECT = "editor"
+
+
 def _resolve_dist_dir(base: Path = Path("frontend/dist")) -> Path:
     """Tatsächliches Angular-Build-Output-Verzeichnis als Deploy-Wurzel ermitteln.
 
     Der Builder ``@angular/build:application`` schreibt den auszuliefernden
     Browser-Build nach ``frontend/dist/<projekt>/browser/`` (verschachtelt),
     während ältere/flache Angular-Setups direkt nach ``frontend/dist/`` bauen.
+    Seit dem Workspace-Umbau (projects/shared|weinliste|editor) liegen im
+    dist-Ordner MEHRERE ``<projekt>/browser/``-Builds nebeneinander (weinliste +
+    editor); ausgeliefert wird nur die öffentliche App ``weinliste``.
     Diese Funktion löst robust den Ordner auf, dessen Inhalt (``index.html``,
     ``assets/`` usw.) direkt in ``remote_path`` landen soll (Req 6.7):
 
     1. Enthält ``base`` selbst eine ``index.html`` -> flacher dist-Ordner.
-    2. Sonst: genau ein ``<projekt>/browser/``-Unterordner mit ``index.html``.
-    3. Fallback: ``base`` unverändert (robust gegen leicht andere Defaults).
+    2. Existiert ``base/weinliste/browser/`` mit ``index.html`` -> öffentliche App
+       (bevorzugt, auch wenn weitere ``<projekt>/browser/`` daneben liegen).
+    3. Sonst: genau ein ``<projekt>/browser/``-Unterordner mit ``index.html``.
+    4. Fallback: ``base`` unverändert (robust gegen leicht andere Defaults).
     """
     if not base.exists():
         return base
     if (base / "index.html").exists():
         return base
+    # Öffentliche App (weinliste) bevorzugt – unabhängig von weiteren Builds
+    # (editor) im selben dist-Ordner.
+    public_browser = base / PUBLIC_APP_PROJECT / "browser"
+    if (public_browser / "index.html").exists():
+        return public_browser
     # Kandidaten: <base>/<projekt>/browser mit index.html
     browser_candidates = [
         p for p in base.glob("*/browser") if (p / "index.html").exists()
@@ -802,6 +848,28 @@ def _resolve_dist_dir(base: Path = Path("frontend/dist")) -> Path:
     if len(nested) == 1:
         return nested[0]
     return base
+
+
+def _resolve_editor_dist_dir(base: Path = Path("frontend/dist")) -> Optional[Path]:
+    """Browser-Build-Ordner der statischen Editor-App ermitteln.
+
+    ``ng build editor`` schreibt nach ``frontend/dist/editor/browser/`` (Builder
+    ``@angular/build:application``). Diese Funktion liefert robust den Ordner,
+    dessen Inhalt (``index.html``, ``assets/`` …) direkt in
+    ``remote_editor_path`` landen soll:
+
+    1. ``base/editor/browser/`` mit ``index.html`` -> Standard-Workspace-Output.
+    2. ``base/editor/`` mit ``index.html`` -> flacher Editor-Build.
+    3. Sonst ``None`` (kein Editor-Build vorhanden -> Editor-Deploy wird still
+       übersprungen, der weinliste-Deploy läuft davon unberührt weiter).
+    """
+    editor_browser = base / EDITOR_APP_PROJECT / "browser"
+    if (editor_browser / "index.html").exists():
+        return editor_browser
+    editor_flat = base / EDITOR_APP_PROJECT
+    if (editor_flat / "index.html").exists():
+        return editor_flat
+    return None
 
 
 def _local_dist_files(dist_dir: Path) -> dict[str, Path]:
@@ -821,15 +889,24 @@ def _protected_prefixes(config: Config) -> tuple[set[str], list[str]]:
     Gibt (exakte Relativpfade, Verzeichnis-Präfixe) zurück. Geschützt sind die
     hochgeladene ``wines.json`` (Basename aus ``export_path``) sowie – falls sie
     unterhalb von ``remote_path`` liegen – der komplette Bilderordner
-    (``remote_images_path``) und der Daten-/Import-Ordner
-    (``remote_import_path``). So kann der dist-Prune diese nie entfernen
-    (Req 6.6).
+    (``remote_images_path``), der Daten-/Import-Ordner (``remote_import_path``)
+    und der Editor-Ordner (``remote_editor_path``). So kann der dist-Prune der
+    öffentlichen Weinliste diese nie entfernen (Req 6.6, 17.1): Der Editor liegt
+    als eigener Unterbaum (z. B. ``/wine_app/editor``) unter ``remote_path`` und
+    wird von einem separaten, eigenen Upload-/Prune-Schritt gepflegt – der
+    weinliste-Prune darf ihn nicht anfassen.
     """
     base = config.deploy.remote_path.rstrip("/")
     exact: set[str] = {Path(config.export_path).name}
     prefixes: list[str] = []
 
-    for sub in (config.deploy.remote_images_path, config.deploy.remote_import_path):
+    for sub in (
+        config.deploy.remote_images_path,
+        config.deploy.remote_import_path,
+        config.deploy.remote_editor_path,
+    ):
+        if not sub:
+            continue
         sub = sub.rstrip("/")
         if sub == base:
             # Ordner liegt direkt unter remote_path -> der Ordner selbst ist
@@ -894,8 +971,49 @@ def _deploy_ftp(config: Config, password: str, force_images: bool = False) -> No
                     # (kein MDTM/Timestamp-Vergleich); sonst nur neuere/fehlende.
                     if force_images or not _ftp_up_to_date(ftp, remote_img, img):
                         _upload_ftp(ftp, img, remote_img)
+
+        # 5) Statische Editor-App in ihren eigenen Remote-Unterordner ablegen
+        #    (Req 16.3, 17.1). Separater, in sich geschlossener Schritt: Upload
+        #    des Editor-Build-Outputs + Prune AUSSCHLIESSLICH unterhalb von
+        #    remote_editor_path. Die ausgelieferte App enthält keine Weindaten;
+        #    der Editor-Schritt berührt images/, data/ und wines.json NICHT und
+        #    löscht dort nichts (der weinliste-Prune schützt zudem den
+        #    Editor-Unterbaum über _protected_prefixes).
+        _deploy_editor(ftp, config, force_images=force_images)
     finally:
         ftp.quit()
+
+
+def _deploy_editor(ftp: "ftplib.FTP", config: Config, force_images: bool = False) -> None:
+    """Statische Editor-App in ``remote_editor_path`` deployen (additiv).
+
+    Lädt den Editor-Browser-Build (``frontend/dist/editor/browser/``) in den
+    konfigurierten Editor-Unterordner (Timestamp-Vergleich wie beim
+    weinliste-Build) und prunet veraltete Dateien NUR unterhalb von
+    ``remote_editor_path``. Fehlt die Editor-Konfiguration oder der Build, wird
+    der Schritt still übersprungen – der weinliste-Deploy bleibt davon
+    unberührt. Der Editor-Prune bewegt sich ausschließlich in seinem eigenen
+    Unterbaum und kann daher Weindaten/Bilder (images/, data/, wines.json) nie
+    berühren.
+    """
+    editor_base = (config.deploy.remote_editor_path or "").rstrip("/")
+    if not editor_base:
+        return
+    editor_dist = _resolve_editor_dist_dir()
+    if editor_dist is None:
+        return
+
+    editor_files = _local_dist_files(editor_dist)
+    _ftp_makedirs(ftp, editor_base)
+    for rel, local_file in editor_files.items():
+        remote_file = f"{editor_base}/{rel}"
+        _ftp_makedirs(ftp, remote_file.rsplit("/", 1)[0])
+        if not _ftp_up_to_date(ftp, remote_file, local_file):
+            _upload_ftp(ftp, local_file, remote_file)
+
+    # Prune ausschließlich im Editor-Unterbaum: veraltete Editor-Dateien
+    # entfernen, ohne irgendetwas außerhalb von editor_base anzufassen.
+    _ftp_prune(ftp, editor_base, set(editor_files.keys()))
 
 
 def _ftp_up_to_date(ftp: "ftplib.FTP", remote_file: str, local_file: Path) -> bool:

@@ -168,6 +168,42 @@ def _make_dist(tmp_path):
     return dist
 
 
+def _make_workspace_dist(tmp_path, weinliste_files=None, editor_files=None):
+    """Realistischer Angular-Workspace-Output: weinliste + editor nebeneinander.
+
+    frontend/dist/weinliste/browser/ (öffentliche App) und
+    frontend/dist/editor/browser/ (Editor-App) – genau wie `ng build weinliste`
+    und `ng build editor` nebeneinander schreiben. Der Editor-Build enthält
+    bewusst KEINE Weindaten – nur die statische App-Hülle (Req 16.3).
+    """
+    dist = tmp_path / "frontend" / "dist"
+    for project, files in (
+        ("weinliste", weinliste_files or {"index.html": "<html>weinliste</html>"}),
+        ("editor", editor_files or {"index.html": "<html>editor</html>"}),
+    ):
+        browser = dist / project / "browser"
+        browser.mkdir(parents=True)
+        for rel, content in files.items():
+            target = browser / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(content, encoding="utf-8")
+    return dist
+
+
+def _make_editor_dist(tmp_path, files=None):
+    """Editor-Build (ng build editor) unter frontend/dist/editor/browser/.
+
+    Enthält bewusst KEINE Weindaten – nur die statische App-Hülle (Req 16.3).
+    """
+    browser = tmp_path / "frontend" / "dist" / "editor" / "browser"
+    browser.mkdir(parents=True)
+    for rel, content in (files or {"index.html": "<html>editor</html>"}).items():
+        target = browser / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+    return browser
+
+
 def test_deploy_uploads_dist_and_never_deletes_wines_or_images(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _make_dist(tmp_path)
@@ -340,6 +376,23 @@ def test_resolve_dist_dir_flat_and_nested(tmp_path, monkeypatch):
     browser.mkdir(parents=True)
     (browser / "index.html").write_text("x", encoding="utf-8")
     assert wi._resolve_dist_dir() == Path("frontend/dist/ng-weinsprechstunde/browser")
+
+
+def test_resolve_dist_dir_prefers_weinliste_in_workspace(tmp_path, monkeypatch):
+    """Im Angular-Workspace (projects/weinliste + editor) baut `ng build` mehrere
+    `<projekt>/browser/`-Ordner nebeneinander. Die Deploy-Phase liefert nur die
+    öffentliche App `weinliste` aus, daher muss `_resolve_dist_dir` deren
+    `frontend/dist/weinliste/browser/` deterministisch bevorzugen."""
+    monkeypatch.chdir(tmp_path)
+    from pathlib import Path
+
+    dist = tmp_path / "frontend" / "dist"
+    for project in ("weinliste", "editor"):
+        browser = dist / project / "browser"
+        browser.mkdir(parents=True)
+        (browser / "index.html").write_text("x", encoding="utf-8")
+
+    assert wi._resolve_dist_dir() == Path("frontend/dist/weinliste/browser")
 
 
 # --- Prune-Scope: nur /wine_app, Pfade außerhalb bleiben unberührt ----------
@@ -598,3 +651,204 @@ def test_ntransfercmd_no_reuse_when_not_prot_p(monkeypatch):
     conn, _ = ftp.ntransfercmd("LIST")
     assert conn is raw_data_conn
     assert ftp.context.calls == []
+
+# --- Editor-App: eigener Remote-Unterordner im wine_app-Bereich -------------
+
+
+def test_resolve_editor_dist_dir_nested_and_flat(tmp_path, monkeypatch):
+    """_resolve_editor_dist_dir liefert den browser-Unterordner des Editors;
+    ohne Editor-Build liefert sie None."""
+    monkeypatch.chdir(tmp_path)
+    from pathlib import Path
+
+    # Kein Editor-Build vorhanden -> None.
+    assert wi._resolve_editor_dist_dir() is None
+
+    # Standard-Workspace-Output: frontend/dist/editor/browser/.
+    browser = tmp_path / "frontend" / "dist" / "editor" / "browser"
+    browser.mkdir(parents=True)
+    (browser / "index.html").write_text("x", encoding="utf-8")
+    assert wi._resolve_editor_dist_dir() == Path("frontend/dist/editor/browser")
+
+
+def test_editor_subtree_is_protected_from_weinliste_prune():
+    """Der Editor-Unterordner (/wine_app/editor) ist beim weinliste-Prune
+    geschützt wie images/ und data/ (Req 6.6, 17.1)."""
+    config = make_config(remote_editor_path="/wine_app/editor")
+    exact, prefixes = wi._protected_prefixes(config)
+    assert "editor/" in prefixes
+    assert wi._is_protected("editor/", exact, prefixes)
+    assert wi._is_protected("editor/index.html", exact, prefixes)
+
+
+def test_deploy_uploads_editor_build_to_remote_editor_path(tmp_path, monkeypatch):
+    """Der Editor-Build landet unter deploy.remote_editor_path (/wine_app/editor),
+    getrennt von der öffentlichen Weinliste."""
+    monkeypatch.chdir(tmp_path)
+    _make_workspace_dist(
+        tmp_path,
+        editor_files={
+            "index.html": "<html>editor</html>",
+            "assets/app.js": "console.log(1)",
+        },
+    )
+
+    config = make_config(
+        password="geheim",
+        protocol="ftpes",
+        remote_editor_path="/wine_app/editor",
+        export_path=str(tmp_path / "export" / "data" / "wines.json"),
+        image_export_dir=str(tmp_path / "export" / "images"),
+    )
+    fake = FakeFTP()
+    _patch_ftp(monkeypatch, fake)
+
+    wi.phase_deploy(config)
+
+    editor_base = config.deploy.remote_editor_path.rstrip("/")
+    base = config.deploy.remote_path.rstrip("/")
+    assert f"{editor_base}/index.html" in fake.stored
+    assert f"{editor_base}/assets/app.js" in fake.stored
+    # Öffentliche Weinliste weiterhin unter remote_path.
+    assert f"{base}/index.html" in fake.stored
+    # Die öffentliche Weinliste enthält KEINE Editor-Dateien (getrennte Builds).
+    assert f"{base}/assets/app.js" not in fake.stored
+
+
+def test_editor_deploy_never_deletes_wines_or_images(tmp_path, monkeypatch):
+    """Der Editor-Schritt löscht keine Weindaten/Bilder und betritt images/,
+    data/ und wines.json nicht."""
+    monkeypatch.chdir(tmp_path)
+    _make_workspace_dist(tmp_path)
+    export_path = tmp_path / "export" / "data" / "wines.json"
+    export_path.parent.mkdir(parents=True)
+    export_path.write_text("[]", encoding="utf-8")
+    images = tmp_path / "export" / "images"
+    images.mkdir(parents=True)
+    (images / "a.jpg").write_bytes(b"img")
+
+    config = make_config(
+        password="geheim",
+        protocol="ftpes",
+        remote_editor_path="/wine_app/editor",
+        export_path=str(export_path),
+        image_export_dir=str(images),
+    )
+    base = config.deploy.remote_path
+    editor_base = config.deploy.remote_editor_path
+    # Server-Listing: wine_app mit images/, data/ und editor/ (mit Altbestand).
+    listing = {
+        base: [
+            f"{base}/index.html",
+            f"{base}/images",
+            f"{base}/data",
+            f"{base}/editor",
+        ],
+        f"{base}/images": [f"{base}/images/a.jpg"],
+        f"{base}/data": [f"{base}/data/wines.json"],
+        editor_base: [f"{editor_base}/index.html", f"{editor_base}/stale.js"],
+    }
+    fake = FakeFTP(
+        listing=listing,
+        dirs={base, f"{base}/images", f"{base}/data", editor_base},
+    )
+    _patch_ftp(monkeypatch, fake)
+
+    wi.phase_deploy(config)
+
+    # Editor-Build hochgeladen ...
+    assert f"{editor_base}/index.html" in fake.stored
+    # ... veraltete Editor-Datei im Editor-Unterbaum geprunt ...
+    assert f"{editor_base}/stale.js" in fake.deleted
+    # ... aber Weindaten/Bilder NIE angetastet (Req 6.6).
+    assert not any(p.endswith("wines.json") for p in fake.deleted)
+    assert not any("/images/" in p for p in fake.deleted)
+    assert not any("/data/" in p for p in fake.deleted)
+
+
+def test_weinliste_prune_does_not_enter_editor_subtree(tmp_path, monkeypatch):
+    """Der weinliste-dist-Prune betritt den Editor-Unterordner GAR NICHT
+    (eigener Unterbaum, über _protected_prefixes geschützt). Nur der separate
+    Editor-Schritt pflegt diesen Unterbaum (Req 6.6, 17.1)."""
+    monkeypatch.chdir(tmp_path)
+    # Editor-Build enthält index.html + keep.js -> beide bleiben beim
+    # Editor-Prune erhalten (lokal vorhanden).
+    _make_workspace_dist(
+        tmp_path,
+        editor_files={"index.html": "<html>editor</html>", "keep.js": "x"},
+    )
+
+    config = make_config(
+        password="geheim",
+        protocol="ftpes",
+        remote_editor_path="/wine_app/editor",
+    )
+    base = config.deploy.remote_path
+    editor_base = config.deploy.remote_editor_path
+    listing = {
+        base: [f"{base}/index.html", f"{base}/editor"],
+        editor_base: [f"{editor_base}/index.html", f"{editor_base}/keep.js"],
+    }
+    fake = MlsdFakeFTP(
+        mlsd_listing={
+            base: [("index.html", {"type": "file"}), ("editor", {"type": "dir"})],
+            editor_base: [
+                ("index.html", {"type": "file"}),
+                ("keep.js", {"type": "file"}),
+            ],
+        },
+        listing=listing,
+        dirs={base, editor_base},
+    )
+    _patch_ftp(monkeypatch, fake)
+
+    wi.phase_deploy(config)
+
+    # Der weinliste-Prune (startet bei remote_base) darf den Editor-Unterbaum
+    # NICHT betreten: Das Editor-Listing kam ausschließlich vom separaten
+    # Editor-Prune. Hier prüfen wir, dass keine Editor-Datei durch den
+    # weinliste-Prune verloren geht – keep.js und index.html bleiben erhalten.
+    assert not any(p.endswith("keep.js") for p in fake.deleted)
+    assert not any(p == f"{editor_base}/index.html" for p in fake.deleted)
+
+
+def test_deploy_skips_editor_when_no_editor_build(tmp_path, monkeypatch):
+    """Ohne Editor-Build läuft der weinliste-Deploy unverändert; es wird nichts
+    in den Editor-Unterordner hochgeladen."""
+    monkeypatch.chdir(tmp_path)
+    _make_dist(tmp_path)  # nur weinliste-dist, KEIN editor-Build
+
+    config = make_config(
+        password="geheim",
+        protocol="ftpes",
+        remote_editor_path="/wine_app/editor",
+    )
+    fake = FakeFTP()
+    _patch_ftp(monkeypatch, fake)
+
+    wi.phase_deploy(config)
+
+    editor_base = config.deploy.remote_editor_path.rstrip("/")
+    assert not any(p.startswith(editor_base + "/") for p in fake.stored)
+    # weinliste weiterhin deployt.
+    assert f"{config.deploy.remote_path.rstrip('/')}/index.html" in fake.stored
+
+
+def test_deploy_skips_editor_when_remote_editor_path_empty(tmp_path, monkeypatch):
+    """Ohne konfigurierten remote_editor_path wird der Editor-Schritt
+    übersprungen (rückwärtskompatibel)."""
+    monkeypatch.chdir(tmp_path)
+    # Realistischer Workspace: weinliste wird aufgelöst, der Editor-Build liegt
+    # separat und wird mangels remote_editor_path NICHT hochgeladen.
+    _make_workspace_dist(tmp_path)
+
+    config = make_config(password="geheim", protocol="ftpes", remote_editor_path="")
+    fake = FakeFTP()
+    _patch_ftp(monkeypatch, fake)
+
+    wi.phase_deploy(config)
+
+    # Kein Upload in irgendeinen editor-Remote-Unterordner.
+    assert not any(p.startswith("/wine_app/editor/") for p in fake.stored)
+    # weinliste weiterhin deployt.
+    assert f"{config.deploy.remote_path.rstrip('/')}/index.html" in fake.stored

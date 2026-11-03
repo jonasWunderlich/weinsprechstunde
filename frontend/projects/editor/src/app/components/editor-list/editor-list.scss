@@ -1,0 +1,108 @@
+.editor-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+
+  &__item {
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+    padding: 0.5rem 0.6rem;
+    border-bottom: 1px solid #eceae6;
+    cursor: pointer;
+
+    &:hover {
+      background: #f6f3ee;
+    }
+
+    &--selected {
+      background: #f0e4e0;
+    }
+
+    &--broken {
+      cursor: not-allowed;
+      opacity: 0.7;
+    }
+  }
+
+  &__body {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  &__title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #2d2a26;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &__item--incomplete &__title,
+  &__item--unknown &__title {
+    font-style: italic;
+    color: #7a7067;
+  }
+
+  &__meta {
+    display: flex;
+    gap: 0.4rem;
+    align-items: center;
+    font-size: 0.75rem;
+  }
+
+  &__date {
+    color: #8a8178;
+
+    &--none {
+      font-style: italic;
+    }
+  }
+
+  &__badge {
+    border-radius: 3px;
+    padding: 0 0.3rem;
+    font-size: 0.68rem;
+    line-height: 1.4;
+
+    &--broken {
+      background: #c0392b;
+      color: #fff;
+    }
+
+    &--incomplete {
+      background: #d9a441;
+      color: #fff;
+    }
+
+    &--unknown {
+      background: #6b7280;
+      color: #fff;
+    }
+  }
+
+  &__empty {
+    padding: 1rem 0.6rem;
+    color: #8a8178;
+    font-size: 0.85rem;
+  }
+}
+
+// Klickbares Bild eines unbekannten Weins (legt per Klick einen Eintrag an, Req 17.36).
+.editor-list__image-button {
+  display: inline-flex;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-radius: 4px;
+
+  &:hover {
+    outline: 2px solid #b26a5a;
+    outline-offset: 1px;
+  }
+}

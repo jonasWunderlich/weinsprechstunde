@@ -1,0 +1,25 @@
+.editor-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.6rem;
+  border-bottom: 1px solid #eceae6;
+
+  &__search {
+    flex: 1 1 160px;
+    min-width: 120px;
+    padding: 0.35rem 0.5rem;
+    border: 1px solid #c9c4bd;
+    border-radius: 6px;
+    font-size: 0.85rem;
+  }
+
+  &__sort {
+    padding: 0.35rem 0.5rem;
+    border: 1px solid #c9c4bd;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    background: #fff;
+  }
+}

@@ -1,0 +1,13 @@
+<div class="entry-type-filter" role="group" aria-label="Eintragstyp">
+  @for (opt of options; track opt.value) {
+    <button
+      type="button"
+      class="entry-type-filter__btn"
+      [class.entry-type-filter__btn--active]="state.entryType() === opt.value"
+      [attr.aria-pressed]="state.entryType() === opt.value"
+      (click)="select(opt.value)"
+    >
+      {{ opt.label }}
+    </button>
+  }
+</div>

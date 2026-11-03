@@ -6,31 +6,61 @@
   },
   "newProjectRoot": "projects",
   "projects": {
-    "ng-weinsprechstunde": {
+    "shared": {
+      "projectType": "library",
+      "root": "projects/shared",
+      "sourceRoot": "projects/shared/src",
+      "prefix": "lib",
+      "architect": {
+        "build": {
+          "builder": "@angular/build:ng-packagr",
+          "options": {
+            "project": "projects/shared/ng-package.json"
+          },
+          "configurations": {
+            "production": {
+              "tsConfig": "projects/shared/tsconfig.lib.prod.json"
+            },
+            "development": {
+              "tsConfig": "projects/shared/tsconfig.lib.json"
+            }
+          },
+          "defaultConfiguration": "production"
+        },
+        "test": {
+          "builder": "@angular/build:unit-test",
+          "options": {
+            "tsConfig": "projects/shared/tsconfig.spec.json"
+          }
+        }
+      }
+    },
+    "weinliste": {
       "projectType": "application",
       "schematics": {
         "@schematics/angular:component": {
           "style": "scss"
         }
       },
-      "root": "",
-      "sourceRoot": "src",
+      "root": "projects/weinliste",
+      "sourceRoot": "projects/weinliste/src",
       "prefix": "app",
       "architect": {
         "build": {
           "builder": "@angular/build:application",
           "options": {
-            "browser": "src/main.ts",
-            "tsConfig": "tsconfig.app.json",
+            "outputPath": "dist/weinliste",
+            "browser": "projects/weinliste/src/main.ts",
+            "tsConfig": "projects/weinliste/tsconfig.app.json",
             "inlineStyleLanguage": "scss",
             "assets": [
               {
                 "glob": "favicon.ico",
-                "input": "public"
+                "input": "projects/weinliste/public"
               }
             ],
             "styles": [
-              "src/styles.scss"
+              "projects/weinliste/src/styles.scss"
             ]
           },
           "configurations": {
@@ -56,16 +86,16 @@
               "assets": [
                 {
                   "glob": "favicon.ico",
-                  "input": "public"
+                  "input": "projects/weinliste/public"
                 },
                 {
                   "glob": "**/*",
-                  "input": "public/data",
+                  "input": "projects/weinliste/public/data",
                   "output": "data"
                 },
                 {
                   "glob": "**/*",
-                  "input": "public/images",
+                  "input": "projects/weinliste/public/images",
                   "output": "images"
                 }
               ]
@@ -77,10 +107,79 @@
           "builder": "@angular/build:dev-server",
           "configurations": {
             "production": {
-              "buildTarget": "ng-weinsprechstunde:build:production"
+              "buildTarget": "weinliste:build:production"
             },
             "development": {
-              "buildTarget": "ng-weinsprechstunde:build:development"
+              "buildTarget": "weinliste:build:development"
+            }
+          },
+          "defaultConfiguration": "development"
+        },
+        "test": {
+          "builder": "@angular/build:unit-test"
+        }
+      }
+    },
+    "editor": {
+      "projectType": "application",
+      "schematics": {
+        "@schematics/angular:component": {
+          "style": "scss"
+        }
+      },
+      "root": "projects/editor",
+      "sourceRoot": "projects/editor/src",
+      "prefix": "app",
+      "architect": {
+        "build": {
+          "builder": "@angular/build:application",
+          "options": {
+            "outputPath": "dist/editor",
+            "browser": "projects/editor/src/main.ts",
+            "tsConfig": "projects/editor/tsconfig.app.json",
+            "inlineStyleLanguage": "scss",
+            "assets": [
+              {
+                "glob": "favicon.ico",
+                "input": "projects/editor/public"
+              }
+            ],
+            "styles": [
+              "projects/editor/src/styles.scss"
+            ]
+          },
+          "configurations": {
+            "production": {
+              "budgets": [
+                {
+                  "type": "initial",
+                  "maximumWarning": "500kB",
+                  "maximumError": "1MB"
+                },
+                {
+                  "type": "anyComponentStyle",
+                  "maximumWarning": "4kB",
+                  "maximumError": "8kB"
+                }
+              ],
+              "outputHashing": "all"
+            },
+            "development": {
+              "optimization": false,
+              "extractLicenses": false,
+              "sourceMap": true
+            }
+          },
+          "defaultConfiguration": "production"
+        },
+        "serve": {
+          "builder": "@angular/build:dev-server",
+          "configurations": {
+            "production": {
+              "buildTarget": "editor:build:production"
+            },
+            "development": {
+              "buildTarget": "editor:build:development"
             }
           },
           "defaultConfiguration": "development"

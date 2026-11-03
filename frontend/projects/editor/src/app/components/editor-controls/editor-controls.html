@@ -1,0 +1,23 @@
+<div class="editor-controls">
+  <input
+    type="search"
+    class="editor-controls__search"
+    placeholder="Weine filtern…"
+    aria-label="Filter"
+    [value]="fs.filter().searchText"
+    (input)="onSearch($any($event.target).value)"
+  />
+
+  <select
+    class="editor-controls__sort"
+    aria-label="Sortierung"
+    [value]="fs.sortOption()"
+    (change)="onSort($any($event.target).value)"
+  >
+    @for (opt of sortOptions; track opt.value) {
+      <option [value]="opt.value">{{ opt.label }}</option>
+    }
+  </select>
+
+  <app-entry-type-filter />
+</div>

@@ -1,0 +1,92 @@
+:host {
+  display: block;
+}
+
+.image-picker__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.image-picker__toggle,
+.image-picker__sort {
+  padding: 0.3rem 0.6rem;
+  border: 1px solid #c9c2b8;
+  border-radius: 4px;
+  background: #f6f3ee;
+  cursor: pointer;
+  font-size: 0.85rem;
+
+  &:hover {
+    background: #eee9e1;
+  }
+}
+
+.image-picker__filter {
+  flex: 1 1 8rem;
+  min-width: 6rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid #c9c2b8;
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+.image-picker__empty {
+  color: #8a8275;
+  font-size: 0.85rem;
+  margin: 0.5rem 0;
+}
+
+.image-picker__grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 0.5rem;
+  max-height: 20rem;
+  overflow-y: auto;
+}
+
+.image-picker__item {
+  margin: 0;
+}
+
+.image-picker__select {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  width: 100%;
+  padding: 0.35rem;
+  border: 1px solid #d9d3c9;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+
+  &:hover {
+    border-color: #a89f90;
+  }
+
+  &--active {
+    border-color: #7a3b3b;
+    box-shadow: 0 0 0 1px #7a3b3b;
+  }
+}
+
+.image-picker__name {
+  font-size: 0.7rem;
+  line-height: 1.2;
+  word-break: break-all;
+  text-align: center;
+}
+
+.image-picker__badge {
+  font-size: 0.65rem;
+  color: #8a8275;
+  background: #efece7;
+  border-radius: 3px;
+  padding: 0 0.3rem;
+}
