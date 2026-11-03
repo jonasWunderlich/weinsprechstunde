@@ -1550,8 +1550,8 @@ File-System-Access-Operationen im `import_dir` ab:
 | Wein speichern / Auto-Save | Vor dem Schreiben `File.lastModified` erneut lesen und mit dem Lade-Zeitstempel vergleichen; bei Abweichung Konfliktwarnung (Req 17.25), sonst über `createWritable()` schreiben |
 | Neuen leeren Weineintrag anlegen | Neue `.json`-Datei im `import_dir` über `getFileHandle(name, { create: true })` erzeugen |
 | Bildlose Weineinträge (fürs `name`-Autocomplete) | Wine-Listing nach Einträgen ohne gesetztes `image`-Feld (leer, `null` oder nicht vorhanden) filtern (Req 17.38) |
-| Anlegen aus Bildklick (from-image) | Neue `.json`-Datei im selben Unterordner wie das Bild mit vorläufigem Dateinamen (Bild-Basisname + `.json`) anlegen: alle WineSchema-Felder `null`, `image` = Dateiname, `tasting_date` aus EXIF `DateTimeOriginal` (clientseitig gelesen) oder `null` (Req 17.36/17.37) |
-| Bild verknüpfen (link-image) | `image`-Feld des bestehenden Eintrags setzen, Bilddatei bei Bedarf in das JSON-Verzeichnis verschieben (Lesen → neu anlegen → Original entfernen) und die vorläufige JSON entfernen (Req 17.41) |
+| Entwurf anlegen (manuell, from-image) | Beim Klick auf „Wein anlegen“ eine neue `.json`-Datei im selben Unterordner wie das Bild (Bild-Basisname + `.json`) mit Name, `image` = Dateiname, `tasting_date` (EXIF `DateTimeOriginal`, clientseitig) und den eingegebenen Feldern schreiben (Req 17.36/17.39/17.40) |
+| Bild verknüpfen (link-image) | `image`-Feld des bestehenden bildlosen Eintrags setzen und die Bilddatei bei Bedarf in dessen JSON-Verzeichnis verschieben (Lesen → neu anlegen → Original entfernen); keine zweite JSON (Req 17.41) |
 | Bild-Listing (mit `date` + `assigned`) | Verzeichnis scannen (`.jpg/.jpeg/.png/.webp`, case-insensitive), je Bild das Datum (EXIF `DateTimeOriginal`, sonst `File.lastModified`) ermitteln und `assigned` aus den `image`-Feldern der JSONs ableiten (Req 17.28/17.29) |
 | Medien-Listing (audio/video) | Verzeichnis nach passenden Mediendateien scannen (ohne `_archive`, Req 17.19) |
 | Thumbnails / Bildvorschauen | **Clientseitig** aus dem per File System Access API gelesenen Originalbild erzeugen (Canvas / `createImageBitmap`); Original unverändert (Req 17.33) |
@@ -1616,43 +1616,49 @@ Eintrag aber als unvollständig markiert (Req 17.20).
 sind, liest, zeigt und speichert die App diese schema-fremden Felder unverändert mit (sie
 werden beim Auto-Save erhalten, nicht entfernt, Req 17.27).
 
-**Anlegen per Bildklick (from-image, Req 17.36/17.37):** Die App legt über die File System
-Access API im **selben Unterordner** des `import_dir` wie das angeklickte Bild eine neue
-JSON-Datei mit einem **vorläufigen Dateinamen** aus dem Bild-Basisnamen (+ `.json`) an.
-Alle WineSchema-Felder werden mit `null` initialisiert — außer `image` (Dateiname des
-Bildes, ohne Pfad) und `tasting_date` (aus EXIF `DateTimeOriginal` des clientseitig
-gelesenen Bildes, falls vorhanden, sonst `null`). Die **endgültige Umbenennung** nach dem
-Schema `{tasting_date}-{slug(name)}` bleibt bewusst der PhasePreparate des ImportScripts
-überlassen; der Editor dupliziert diese Umbenennungslogik nicht. `image`, `audio` und
-`video` werden stets nur als Dateiname ohne Pfad gespeichert; die Mediendateien liegen im
-selben Verzeichnis wie die JSON-Datei (Req 17.35).
+**Entwurf für einen unbekannten Wein (Req 17.36/17.37):** Wählt der Benutzer einen
+unbekannten Wein aus (Klick auf den Eintrag oder sein Bild), öffnet die App den WineEditor
+als **Entwurf** und zeigt das vollständige, aus der WineSchema abgeleitete Formular — es wird
+dabei **keine** JSON-Quelldatei angelegt. Das Formular ist mit `image` (Dateiname des
+Bildes) und `tasting_date` (aus EXIF `DateTimeOriginal` des clientseitig gelesenen Bildes,
+falls vorhanden, sonst leer) vorbefüllt. Solange noch keine JSON existiert, sind alle Felder
+**außer `name` schreibgeschützt** und es wird nichts geschrieben.
 
-**Bildlose Einträge fürs `name`-Autocomplete (Req 17.38):** Nach einem Bildklick bietet das
-`name`-Feld des neuen Eintrags ein Autocomplete, das ausschließlich bestehende Weineinträge
-**ohne gesetztes `image`-Feld** vorschlägt. Dafür filtert die App das Wine-Listing auf alle
-(nicht-archivierten) Weineinträge, deren JSON kein gesetztes `image`-Feld hat (`image` leer,
-`null` oder nicht vorhanden). Diese Liste speist die beiden einzigen zulässigen Eingabewege
-des `name`-Feldes (Req 17.39): eigener neuer Name oder Auswahl eines bestehenden bildlosen
-Eintrags.
+**Bildlose Einträge fürs `name`-Autocomplete (Req 17.38):** Im Entwurf bietet das `name`-Feld
+ein Autocomplete, das ausschließlich bestehende Weineinträge **ohne gesetztes `image`-Feld**
+vorschlägt. Dafür filtert die App das Wine-Listing auf alle (nicht-archivierten)
+Weineinträge, deren JSON kein gesetztes `image`-Feld hat (`image` leer, `null` oder nicht
+vorhanden).
 
-**Verknüpfen mit einem bestehenden bildlosen Eintrag (link-image, Req 17.41/17.42/17.43):**
-Wählt der Benutzer im `name`-Autocomplete einen bestehenden bildlosen Weineintrag, führt die
-App über die File System Access API als **eine zusammenhängende Operation** aus:
-1. Setzt das `image`-Feld des bestehenden Eintrags auf den Bild-Dateinamen (ohne Pfad).
-2. Verschiebt die Bilddatei in das Verzeichnis der JSON des bestehenden Eintrags, falls sie
-   in einem anderen Unterordner des `import_dir` liegt (Lesen → am Ziel neu anlegen →
-   Original entfernen); Bild und JSON liegen danach stets im selben Verzeichnis (Req 17.35).
-3. Entfernt die vorläufige JSON der per Bildklick angelegten Datei.
+**Manuelles Anlegen (Req 17.39):** Das Tippen im `name`-Feld legt **nichts** an und löst
+keine Verknüpfung aus. Das Anlegen passiert erst über eine manuelle Aktion (Schaltfläche
+„Wein anlegen“), die nur bei nicht-leerem Namen verfügbar ist. Beim Anlegen deckt die App
+zwei Wege ab:
 
-Danach existiert für den Wein **genau eine** JSON — die des bestehenden Eintrags (Req
-17.42); der WineEditor zeigt und bearbeitet fortan diesen Eintrag. Schlägt Schritt 2 oder 3
-fehl, zeigt die App eine erkennbare Fehleranzeige und stellt sicher, dass **kein Zustand mit
-doppelter JSON** für denselben Wein zurückbleibt (die vorläufige JSON wird nur entfernt,
-wenn das bestehende `image` konsistent gesetzt und das Bild am Zielort ist; andernfalls
-bleibt der Ausgangszustand erhalten, Req 17.43). Diese Invariante — **niemals zwei
-JSON-Dateien für denselben Wein** nach einem per Bildklick begonnenen Anlegevorgang — gilt
-für beide Wege: eigener Name (vorläufige JSON bleibt, `name` wird gesetzt, Req 17.40) wie
-auch Verknüpfung (vorläufige JSON entfällt, bestehende bleibt).
+- **(a) Eigener neuer Name (Req 17.40):** Entspricht der eingegebene Name keinem
+  Autocomplete-Vorschlag exakt, legt die App über die File System Access API im **selben
+  Unterordner** wie das Bild eine neue JSON-Datei mit dem Bild-Basisnamen (+ `.json`) an und
+  schreibt den Namen, das `image`-Feld (Dateiname) sowie die bis dahin eingegebenen Felder.
+  Die **endgültige Umbenennung** nach `{tasting_date}-{slug(name)}` bleibt der PhasePreparate
+  des ImportScripts überlassen (keine Duplizierung der Umbenennungslogik).
+- **(b) Verknüpfen mit einem bestehenden bildlosen Eintrag (link-image, Req 17.41):**
+  Entspricht der Name exakt einem bestehenden bildlosen Weineintrag aus dem Autocomplete,
+  legt die App **keine** neue JSON an, sondern setzt das `image`-Feld dieses Eintrags auf den
+  Bild-Dateinamen und verschiebt das Bild bei Bedarf in dessen JSON-Verzeichnis (Bild und
+  JSON danach stets im selben Verzeichnis, Req 17.35). Fortan bearbeitet der WineEditor den
+  bestehenden Eintrag.
+
+`image`, `audio` und `video` werden stets nur als Dateiname ohne Pfad gespeichert; die
+Mediendateien liegen im selben Verzeichnis wie die JSON-Datei (Req 17.35).
+
+Nach einem manuell abgeschlossenen Anlegevorgang existiert für den Wein **genau eine**
+JSON-Quelldatei (Req 17.42) — die neu angelegte oder die verknüpfte bestehende —, und dieser
+Wein **bleibt im WineEditor geöffnet und bearbeitbar**, unabhängig davon, ob der aktuelle
+Listenfilter ihn gerade anzeigt (der geöffnete Eintrag wird aus den rohen Scan-Daten
+aufgelöst, nicht aus der gefilterten Liste). Schlägt das Anlegen der JSON oder beim
+Verknüpfen das Setzen des `image`-Feldes bzw. das Bildverschieben fehl, zeigt die App eine
+erkennbare Fehleranzeige und hinterlässt **keinen** Zustand mit doppelter JSON für denselben
+Wein (Req 17.43). Die Invariante lautet: **niemals zwei JSON-Dateien für denselben Wein.**
 
 **Archivierung (`import_dir/_archive/`):** Archivieren eines ungenutzten Bildes verschiebt
 die Bilddatei, Archivieren eines angelegten Weineintrags verschiebt die JSON-Datei zusammen
@@ -1723,7 +1729,7 @@ dupliziert; unbekannte Weine werden dafür mit ihrem aus dem Bild ermittelten
 `tasting_date` in dieselbe Sortierung eingereiht.
 
 **Zusätzlicher Eintragstyp-Filter (Req 17.10/17.14/17.15):** Nur im Editor gibt es einen
-dreiwertigen Eintragstyp-Filter „Alle" / „Nur angelegte" / „Nur unbekannte". Angelegte
+vierwertigen Eintragstyp-Filter „Alle" / „Nur angelegte" / „Ohne Bilder" / „Nur unbekannte". Angelegte
 Weine haben eine JSON-Quelldatei im `import_dir`; unbekannte Weine sind Bilddateien ohne
 referenzierende JSON (die Bild-Listing-Einträge mit `assigned = false`). Steht der Filter
 auf „Nur unbekannte" und der Benutzer tippt in einen attributbasierten Filter, schaltet der
@@ -1745,7 +1751,7 @@ nicht in der geteilten Library.
 | `text` (price) | Textfeld mit Autocomplete aus den bekannten Werten; Auto-Save schreibt 2 Nachkommastellen, Dezimal-Komma akzeptiert (Req 17.17/17.22) |
 | `text` (description) | Mehrzeiliges Textfeld |
 | schema-fremdes Feld (nicht in WineSchema) | Wird angezeigt und beim Speichern erhalten (Req 17.27) |
-| `text` (name, per Bildklick angelegter Eintrag) | Textfeld mit Autocomplete bildloser Einträge; genau zwei Wege: eigener neuer Name oder Auswahl eines bestehenden bildlosen Eintrags (Req 17.38/17.39) |
+| `text` (name, Entwurf eines unbekannten Weins) | Textfeld mit Autocomplete bildloser Einträge; manuelles Anlegen per „Wein anlegen“-Button — eigener neuer Name (neue JSON) oder exakter Treffer (Verknüpfung) (Req 17.38–17.41) |
 | `text` (image) | ImagePicker (Req 17.28/17.29/17.30/17.31) |
 | `text` (audio, video) | Medien-Picker analog zum ImagePicker (Req 17.19) |
 
@@ -1803,37 +1809,30 @@ Medien-Picker analog zum ImagePicker. Er listet die passenden Mediendateien aus 
 `import_dir` über den `FileSystemAccessService` (ohne `_archive`) und übernimmt bei Auswahl
 den **Dateinamen** (ohne Pfad) in das jeweilige Feld (Req 17.35).
 
-**Neuer Eintrag per Bildklick (Req 17.36/17.37):** Ein Klick auf das Bild eines
-unbekannten Weins legt über den `FileSystemAccessService` eine neue JSON-Datei an und öffnet
-den `WineEditor` für den neuen Eintrag. Die neue JSON-Datei erhält einen vorläufigen Namen
-aus dem Bild-Basisnamen (+ `.json`) im **selben Unterordner** wie das Bild — alle
-WineSchema-Felder `null`, außer `image` (Dateiname) und `tasting_date` (aus EXIF
-`DateTimeOriginal` bzw. `null`). Die endgültige Umbenennung nach
-`{tasting_date}-{slug(name)}` übernimmt später die PhasePreparate des ImportScripts
-(keine Duplizierung der Umbenennungslogik im Editor). Nach dem Anlegen aktualisiert die App
-die Liste automatisch (Req 17.6).
+**Entwurf per Auswahl eines unbekannten Weins (Req 17.36/17.37):** Die Auswahl eines
+unbekannten Weins (Klick auf Eintrag oder Bild) öffnet den `WineEditor` als Entwurf und zeigt
+das vollständige Formular, ohne eine JSON anzulegen; alle Felder außer `name` sind
+schreibgeschützt, `image`/`tasting_date` sind vorbefüllt.
 
-**`name`-Autocomplete & zwei Wege nach Bildklick (Req 17.38–17.43):** Ist der WineEditor für
-einen soeben per Bildklick angelegten Eintrag geöffnet, bietet das `name`-Feld ein
-Autocomplete, das ausschließlich **bestehende bildlose Weineinträge** vorschlägt (JSON ohne
-gesetztes `image`-Feld), clientseitig aus dem Wine-Listing gefiltert (Req 17.38). Es gibt
-genau zwei zulässige Eingabewege (Req 17.39):
+**`name`-Autocomplete & manuelles Anlegen (Req 17.38–17.43):** Das `name`-Feld schlägt
+ausschließlich **bestehende bildlose Weineinträge** vor (JSON ohne gesetztes `image`-Feld),
+clientseitig aus dem Wine-Listing gefiltert (Req 17.38). Das Tippen legt nichts an; erst die
+Schaltfläche „Wein anlegen“ (nur bei nicht-leerem Namen, Req 17.39) schreibt — und deckt zwei
+Wege ab:
 
-- **(a) Eigener neuer Name (Req 17.40):** Der Benutzer tippt einen neuen Namen, ohne einen
-  Autocomplete-Vorschlag auszuwählen. Die vorläufige JSON bleibt bestehen, ihr `name`-Feld
-  wird mit der Eingabe befüllt (Auto-Save wie gehabt).
-- **(b) Auswahl eines bestehenden bildlosen Eintrags (Req 17.41):** Die App setzt dessen
-  `image`-Feld auf den Bild-Dateinamen, verschiebt das Bild bei Bedarf in das Verzeichnis
-  der JSON dieses Eintrags (Bild und JSON stets im selben Verzeichnis) und entfernt die
-  vorläufige JSON — als eine zusammenhängende Operation über die File System Access API.
-  Danach zeigt und bearbeitet der WineEditor den bestehenden Eintrag.
+- **(a) Eigener neuer Name (Req 17.40):** Neue JSON im selben Unterordner wie das Bild
+  (Bild-Basisname + `.json`) mit Name, `image` und den eingegebenen Feldern.
+- **(b) Exakter Treffer eines bestehenden bildlosen Eintrags (Req 17.41):** `image`-Feld des
+  bestehenden Eintrags setzen, Bild bei Bedarf in dessen Verzeichnis verschieben; keine neue
+  JSON. Fortan bearbeitet der WineEditor den bestehenden Eintrag.
 
-Nach Abschluss eines per Bildklick begonnenen Anlegevorgangs existiert für denselben Wein
-**genau eine** JSON-Quelldatei (Req 17.42) — entweder der per eigenem Namen fortgeführte
-vorläufige Eintrag oder der aus dem Autocomplete gewählte bestehende Eintrag. Schlägt beim
-Weg (b) das Entfernen der vorläufigen JSON oder das Bildverschieben fehl, zeigt die App eine
-erkennbare Fehleranzeige und hinterlässt **keinen** Zustand mit doppelter JSON für denselben
-Wein (Req 17.43). Die Invariante lautet: **niemals zwei JSON-Dateien für denselben Wein.**
+Nach einem manuell abgeschlossenen Anlegevorgang existiert für denselben Wein **genau eine**
+JSON-Quelldatei (Req 17.42); der Wein bleibt im WineEditor geöffnet (aufgelöst aus den rohen
+Scan-Daten, unabhängig vom Listenfilter) und der Auto-Save greift fortan normal. Schlägt das
+Anlegen bzw. beim Weg (b) das Setzen des `image`-Feldes oder das Bildverschieben fehl, zeigt
+die App eine erkennbare Fehleranzeige und hinterlässt **keinen** Zustand mit doppelter JSON
+für denselben Wein (Req 17.43). Die Invariante lautet: **niemals zwei JSON-Dateien für
+denselben Wein.**
 
 **Archivieren (kein Löschen):** Der Editor bietet keine Lösch-Funktion (Req 17.44). Als
 entfernende Aktionen existieren ausschließlich: ungenutztes Bild archivieren bzw. angelegten
@@ -1979,7 +1978,9 @@ export type SortOption =
   | 'tasting_date_asc'
   | 'rating_desc'
   | 'price_desc'
-  | 'price_asc';
+  | 'price_asc'
+  | 'name_asc'
+  | 'name_desc';
 export type LoadState   = 'idle' | 'loading' | 'loaded' | 'error';
 
 // wine-schema.model.ts
@@ -2142,15 +2143,15 @@ export interface UserPreferences {
 
 **Validates: Requirements 17.33**
 
-### Property 24: Anlegen per Bildklick — Ort, Name und Feldbelegung
+### Property 24: Anlegen eines Entwurfs — Ort, Name und Feldbelegung
 
-*For any* Bilddatei in einem beliebigen Unterordner des `import_dir`: Nach dem Anlegen per Bildklick (from-image über den `FileSystemAccessService`) muss die erzeugte JSON-Datei (1) im selben Unterordner wie das Bild liegen, (2) als Basisnamen den Basisnamen des Bildes tragen (Endung `.json`), (3) `image` auf den Dateinamen des Bildes (ohne Pfad) gesetzt haben, (4) `tasting_date` auf den EXIF-`DateTimeOriginal`-Wert bzw. `null` gesetzt haben und (5) alle übrigen WineSchema-Felder auf `null` gesetzt haben — ohne dass eine Umbenennung nach `{tasting_date}-{slug(name)}` stattfindet.
+*For any* Bilddatei in einem beliebigen Unterordner des `import_dir` und *for any* eingegebenen neuen Namen: Nach dem manuellen Anlegen eines Entwurfs (über den `FileSystemAccessService`) muss die erzeugte JSON-Datei (1) im selben Unterordner wie das Bild liegen, (2) als Basisnamen den Basisnamen des Bildes tragen (Endung `.json`), (3) `image` auf den Dateinamen des Bildes (ohne Pfad) und (4) `name` auf den eingegebenen Namen gesetzt haben — ohne dass eine Umbenennung nach `{tasting_date}-{slug(name)}` stattfindet (diese bleibt der PhasePreparate überlassen).
 
-**Validates: Requirements 17.35, 17.36, 17.37**
+**Validates: Requirements 17.35, 17.36, 17.40**
 
-### Property 25: Genau eine JSON pro Wein nach from-image-Verknüpfung
+### Property 25: Genau eine JSON pro Wein nach link-image-Verknüpfung
 
-*For any* per Bildklick angelegten vorläufigen Weineintrag und *for any* bestehenden bildlosen Weineintrag: Nach Abschluss des Verknüpfungswegs (link-image über den `FileSystemAccessService`) existiert für den betroffenen Wein **genau eine** JSON-Quelldatei — die des bestehenden Eintrags mit auf den Bild-Dateinamen gesetztem `image`-Feld, während die vorläufige JSON entfernt ist und Bild und JSON im selben Verzeichnis liegen. Schlägt das Entfernen der vorläufigen JSON oder das Verschieben des Bildes fehl, darf **kein** Zustand mit zwei JSON-Quelldateien für denselben Wein zurückbleiben.
+*For any* unbekannten Wein (Entwurf) und *for any* bestehenden bildlosen Weineintrag: Nach Abschluss des Verknüpfungswegs (link-image über den `FileSystemAccessService`) existiert für den betroffenen Wein **genau eine** JSON-Quelldatei — die des bestehenden Eintrags mit auf den Bild-Dateinamen gesetztem `image`-Feld, während keine zweite JSON angelegt wird und Bild und JSON im selben Verzeichnis liegen. Schlägt das Entfernen der vorläufigen JSON oder das Verschieben des Bildes fehl, darf **kein** Zustand mit zwei JSON-Quelldateien für denselben Wein zurückbleiben.
 
 **Validates: Requirements 17.41, 17.42, 17.43**
 
@@ -2245,8 +2246,8 @@ Verschieben, Konflikterkennung und Thumbnail-Erzeugung ohne echten Dateizugriff 
 
 - **Browser-Voraussetzungen & Ordner-Freigabe**: kein Login-Screen — Start ohne Anmeldung (Req 16.1/17.1); Ordner-Freigabe beim ersten Start und Handle-Persistenz/-Wiederherstellung über IndexedDB (gemockt), Re-Autorisierung beim erneuten Öffnen (Req 17.2/17.3); verständlicher Hinweis bei fehlender File System Access API (nicht-Chromium-Browser, Req 17.4)
 - **Keine Netzwerkanfragen für Daten / keine Weindaten in der App**: alle Datenzugriffe laufen über den `FileSystemAccessService` auf den freigegebenen `import_dir`; die App enthält keine gebündelten Weindaten (Req 16.2/16.3)
-- **Unit-Tests**: Auto-Refresh der Liste nach eigener Aktion (Anlegen/Archivieren/Verknüpfen/Speichern) und manueller Aktualisieren-Button (erneuter Scan) ohne Polling (Req 17.6/17.7), Zwei-Spalten-Layout/Eintragsauswahl (Req 17.8/17.9), Standard-Sortierung über den geteilten FilterService (tasting_date absteigend, gemischte Typen, undatierte ans Ende, Req 17.12), Eintragstyp-Filter (drei Zustände; Auto-Umschalten „Nur unbekannte" → „Nur angelegte" bei attributbasierter Eingabe, Req 17.14/17.15), WineEditor-Formular aus WineSchema (Datepicker, Rating-Step, Req 17.16), Dropdown-/Multi-Select-Werte aus geladenen Einträgen (Req 17.17), grape als Tag-/Chip-Eingabe mit Autocomplete → Array (Req 17.18), Audio-/Video-Picker übernimmt Dateiname (Req 17.19/17.35), Unvollständig-Markierung bei leerem `name` in Liste und WineEditor ohne Blockieren (Req 17.20), defekte JSON in Liste als fehlerhaft markiert und nicht öffenbar (Req 17.26), schema-fremde Felder angezeigt und beim Speichern erhalten (Req 17.27), Bild-Listing mit `date`/`assigned` und unbekannte Weine (`assigned = false`; Bildtypen `.jpg/.jpeg/.png/.webp` case-insensitive, Req 17.28/17.29/17.32), ImagePicker (Standard „nur ungenutzte" / Umschalt-Button auf alle / Datumssortierung / Dateinamen-Filter, clientseitige Thumbnail-Vorschau, Req 17.28–17.31/17.34), Auto-Save-Debounce (500 ms) direkt über die File System Access API + Typkonvertierung der number-Felder + Speicherstatus-Indikator (Erfolg/Fehler, Req 17.21–17.24), Konfliktwarnung bei abweichender `File.lastModified` (Req 17.25), Anlegen per Bildklick (vorläufiger Name im selben Unterordner, Felder `null` außer `image`/`tasting_date`, Req 17.36/17.37), `name`-Autocomplete bildloser Einträge mit genau zwei Wegen — eigener Name bzw. Verknüpfung (link-image), am Ende genau eine JSON pro Wein, Fehleranzeige ohne doppelte JSON (Req 17.38–17.43), Archivieren-Aktionen (Verschieben nach `_archive/`) inkl. Fehleranzeige — **keine** Lösch-Aktion (Req 17.44/17.46–17.48), `_archive`-Ignorierung bei allen Scans (Req 17.49)
-- **Property-Tests (fast-check)**: Property 17 (Konflikt-Erkennung über `File.lastModified`), Property 23 (clientseitiges Thumbnail lässt Original unverändert, Seitenverhältnis), Property 24 (from-image: Ort/Name/Feldbelegung), Property 25 (genau eine JSON pro Wein nach from-image-Verknüpfung), Property 26 (Zugriff bleibt auf den freigegebenen Ordner beschränkt — über den gemockten `FileSystemAccessService`), Property 27 (Editor-Typkonvertierung), Property 28 (schema-fremde Felder bleiben erhalten)
+- **Unit-Tests**: Auto-Refresh der Liste nach eigener Aktion (Anlegen/Archivieren/Verknüpfen/Speichern) und manueller Aktualisieren-Button (erneuter Scan) ohne Polling (Req 17.6/17.7), Zwei-Spalten-Layout/Eintragsauswahl (Req 17.8/17.9), Standard-Sortierung über den geteilten FilterService (tasting_date absteigend, gemischte Typen, undatierte ans Ende, Req 17.12), Eintragstyp-Filter (drei Zustände; Auto-Umschalten „Nur unbekannte" → „Nur angelegte" bei attributbasierter Eingabe, Req 17.14/17.15), WineEditor-Formular aus WineSchema (Datepicker, Rating-Step, Req 17.16), Dropdown-/Multi-Select-Werte aus geladenen Einträgen (Req 17.17), grape als Tag-/Chip-Eingabe mit Autocomplete → Array (Req 17.18), Audio-/Video-Picker übernimmt Dateiname (Req 17.19/17.35), Unvollständig-Markierung bei leerem `name` in Liste und WineEditor ohne Blockieren (Req 17.20), defekte JSON in Liste als fehlerhaft markiert und nicht öffenbar (Req 17.26), schema-fremde Felder angezeigt und beim Speichern erhalten (Req 17.27), Bild-Listing mit `date`/`assigned` und unbekannte Weine (`assigned = false`; Bildtypen `.jpg/.jpeg/.png/.webp` case-insensitive, Req 17.28/17.29/17.32), ImagePicker (Standard „nur ungenutzte" / Umschalt-Button auf alle / Datumssortierung / Dateinamen-Filter, clientseitige Thumbnail-Vorschau, Req 17.28–17.31/17.34), Auto-Save-Debounce (500 ms) direkt über die File System Access API + Typkonvertierung der number-Felder + Speicherstatus-Indikator (Erfolg/Fehler, Req 17.21–17.24), Konfliktwarnung bei abweichender `File.lastModified` (Req 17.25), Entwurf eines unbekannten Weins (volles Formular ohne JSON, Felder außer `name` readonly, `image`/`tasting_date` vorbefüllt, Req 17.36/17.37), manuelles Anlegen per „Wein anlegen“-Button (Req 17.39) mit zwei Wegen — eigener neuer Name (neue JSON, Req 17.40) bzw. exakter Treffer → Verknüpfung (link-image, Req 17.41), am Ende genau eine JSON pro Wein, Wein bleibt geöffnet, Fehleranzeige ohne doppelte JSON (Req 17.38–17.43), Archivieren-Aktionen (Verschieben nach `_archive/`) inkl. Fehleranzeige — **keine** Lösch-Aktion (Req 17.44/17.46–17.48), `_archive`-Ignorierung bei allen Scans (Req 17.49)
+- **Property-Tests (fast-check)**: Property 17 (Konflikt-Erkennung über `File.lastModified`), Property 23 (clientseitiges Thumbnail lässt Original unverändert, Seitenverhältnis), Property 24 (Entwurf-Anlegen: Ort/Name/Feldbelegung), Property 25 (genau eine JSON pro Wein nach link-image-Verknüpfung), Property 26 (Zugriff bleibt auf den freigegebenen Ordner beschränkt — über den gemockten `FileSystemAccessService`), Property 27 (Editor-Typkonvertierung), Property 28 (schema-fremde Felder bleiben erhalten)
   - Mindestens 100 Iterationen: `fc.assert(fc.property(...), { numRuns: 100 })`
   - Tag-Format: `// Feature: weinliste, Property N: <property_text>`
 - **Geteilte Library (`@weinsprechstunde/shared`)**: FilterService-, Filter-/Such-/Sortier- und WineSchema-Verarbeitungslogik wird durch die bestehenden Tests der Library abgedeckt (vitest + jsdom + fast-check, Properties 10, 11, 14 der `applyFiltersAndSort`-Logik, inkl. der Standard-Sortierung aus Req 17.12) und gilt damit für beide Apps gemeinsam — keine Duplizierung der Tests.

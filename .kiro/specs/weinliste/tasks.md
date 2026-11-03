@@ -388,7 +388,7 @@ Property-Tests: `hypothesis` (Python, pytest), `fast-check` (Angular, vitest + j
 - [x] 27. Wine Editor: Zwei-Spalten-Layout und Eintragsliste
   - [x] 27.1 Editor-Shell, Liste und Eintragstyp-Filter implementieren
     - Zwei-Spalten-Layout (Eintragsliste links, WineEditor rechts); kein Login-Screen, Start ohne Anmeldung
-    - Liste über den geteilten FilterService/ControlsRow (attributbasierte Filter/Suche/Sortierung) plus Eintragstyp-Filter mit drei Zuständen „Alle"/„Nur angelegte"/„Nur unbekannte"; Auto-Umschalten „Nur unbekannte" → „Nur angelegte" bei attributbasierter Eingabe
+    - Liste über den geteilten FilterService/ControlsRow (attributbasierte Filter/Suche/Sortierung) plus Eintragstyp-Filter mit vier Zuständen „Alle"/„Nur angelegte"/„Ohne Bilder"/„Nur unbekannte"; Auto-Umschalten „Nur unbekannte" → „Nur angelegte" bei attributbasierter Eingabe
     - Standard-Sortierung absteigend nach `tasting_date` (angelegte + unbekannte gemischt, undatierte ans Ende); unbekannte Weine mit Platzhalter „unbekannter Wein", ermitteltem `tasting_date` und Bildvorschau
     - Auto-Refresh der Liste nach eigener Aktion (Anlegen/Archivieren/Verknüpfen/Speichern) + manueller Aktualisieren-Button (kein Polling); Auswahl zeigt Eintrag rechts im WineEditor
     - _Requirements: 17.6, 17.7, 17.8, 17.9, 17.10, 17.11, 17.12, 17.13, 17.14, 17.15_
@@ -424,20 +424,20 @@ Property-Tests: `hypothesis` (Python, pytest), `fast-check` (Angular, vitest + j
     - Auswahl → Dateiname in das `image`-Feld des aktuellen Eintrags übernehmen (nur Dateiname ohne Pfad)
     - _Requirements: 17.28, 17.29, 17.30, 17.31, 17.32, 17.33, 17.34, 17.35_
 
-- [x] 30. Wine Editor: Bildklick-Anlegen und name-Verknüpfung
-  - [x] 30.1 From-image-Anlegen und link-image implementieren
-    - Klick auf das Bild eines unbekannten Weins legt per File System Access API eine vorläufige JSON im selben Unterordner an (Basisname des Bildes + `.json`), alle Schema-Felder `null` außer `image` (Bild-Dateiname) und `tasting_date` (EXIF `DateTimeOriginal` oder `null`); keine Umbenennung (bleibt der PhasePreparate überlassen)
-    - `name`-Autocomplete schlägt bestehende bildlose Einträge vor; genau zwei Eingabewege: eigener neuer Name (behält den vorläufigen Eintrag) oder Auswahl eines bestehenden Eintrags
-    - Bei Auswahl eines bestehenden Eintrags: vorläufige JSON entfernen, dessen `image`-Feld setzen, Bild bei Bedarf in dessen Verzeichnis verschieben, fortan den bestehenden Eintrag bearbeiten → genau eine JSON pro Wein; bei Fehler erkennbare Fehleranzeige ohne doppelte JSON
+- [x] 30. Wine Editor: Entwurf-Anlegen (manuell) und name-Verknüpfung
+  - [x] 30.1 Entwurf-Anlegen (manuell) und link-image implementieren
+    - Auswahl eines unbekannten Weins öffnet den WineEditor als Entwurf (volles Formular, keine JSON); Felder außer `name` readonly, vorbefüllt mit `image` und `tasting_date` (EXIF `DateTimeOriginal` oder leer)
+    - Manuelles Anlegen per „Wein anlegen"-Button (nur bei nicht-leerem Namen; Tippen legt nichts an); `name`-Autocomplete schlägt bestehende bildlose Einträge vor
+    - Eigener neuer Name → neue JSON (Basisname des Bildes + `.json`) mit Name/`image`/eingegebenen Feldern; exakter Treffer eines bestehenden bildlosen Eintrags → dessen `image` setzen, Bild bei Bedarf verschieben, keine neue JSON → genau eine JSON pro Wein; Wein bleibt geöffnet; bei Fehler erkennbare Fehleranzeige ohne doppelte JSON
     - _Requirements: 17.36, 17.37, 17.38, 17.39, 17.40, 17.41, 17.42, 17.43_
 
-  - [ ]* 30.2 Property-Test Anlegen per Bildklick — Ort, Name und Feldbelegung
-    - **Property 24: Anlegen per Bildklick — Ort, Name und Feldbelegung**
-    - **Validates: Requirements 17.35, 17.36, 17.37**
+  - [ ]* 30.2 Property-Test Anlegen eines Entwurfs — Ort, Name und Feldbelegung
+    - **Property 24: Anlegen eines Entwurfs — Ort, Name und Feldbelegung**
+    - **Validates: Requirements 17.35, 17.36, 17.40**
     - Tag: `// Feature: weinliste, Property 24: ...`
 
-  - [ ]* 30.3 Property-Test genau eine JSON pro Wein nach from-image-Verknüpfung
-    - **Property 25: Genau eine JSON pro Wein nach from-image-Verknüpfung**
+  - [ ]* 30.3 Property-Test genau eine JSON pro Wein nach link-image-Verknüpfung
+    - **Property 25: Genau eine JSON pro Wein nach link-image-Verknüpfung**
     - **Validates: Requirements 17.41, 17.42, 17.43**
     - Tag: `// Feature: weinliste, Property 25: ...`
 
@@ -469,7 +469,7 @@ Property-Tests: `hypothesis` (Python, pytest), `fast-check` (Angular, vitest + j
 - Property-Tests (27 Stück) validieren universelle Korrektheitseigenschaften:
   - Python/hypothesis (vorhanden): Properties 1–9, 18, 20, 21 — jeweils mit `# Feature: weinliste, Property N: ...`
   - Angular/fast-check öffentliche Weinliste: Properties 10–16, 19 — jeweils mit `// Feature: weinliste, Property N: ...`
-  - Angular/fast-check Editor-App (File System Access API über `FileSystemAccessService` gemockt): Property 17 (Konflikt-Erkennung), 23 (Thumbnail lässt Original unverändert), 24 (from-image Ort/Name/Feldbelegung), 25 (genau eine JSON pro Wein), 26 (Zugriff bleibt auf den Ordner beschränkt), 27 (Editor-Typkonvertierung), 28 (schema-fremde Felder bleiben erhalten)
+  - Angular/fast-check Editor-App (File System Access API über `FileSystemAccessService` gemockt): Property 17 (Konflikt-Erkennung), 23 (Thumbnail lässt Original unverändert), 24 (Entwurf-Anlegen: Ort/Name/Feldbelegung), 25 (genau eine JSON pro Wein nach link-image), 26 (Zugriff bleibt auf den Ordner beschränkt), 27 (Editor-Typkonvertierung), 28 (schema-fremde Felder bleiben erhalten)
   - Mindestens 100 Iterationen pro Property.
 - Test-Stack: Python (pytest + hypothesis) sowie Angular (öffentliche Weinliste, Editor-App und geteilte Library mit vitest + jsdom + fast-check). Der Editor hat kein Backend und damit keinen eigenen Teststack — er wird im Angular-Stack getestet.
 - Unit-Tests validieren konkrete Beispiele und Randfälle.
