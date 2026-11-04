@@ -19,3 +19,47 @@ $bp-desktop: 1024px;
   border-radius: var(--radius-input);
   box-shadow: var(--box-shadow-subtle);
 }
+
+@mixin button {
+  border: none !important;
+  background: var(--color-button-bg);
+  color: var(--color-button-label);
+  border-radius: var(--radius-pill);
+
+  &:hover {
+    background: var(--color-hover);
+  }
+
+  &:focus {
+    background: var(--color-focus);
+  }
+
+  &:active,
+  &.active {
+    background: var(--color-active);
+  }
+}
+
+@mixin filter-button {
+  border-radius: var(--radius-input);
+  border: 2px solid var(--color-filter-border);
+  border-radius: var(--radius-input);
+  // background: var(--color-filter-background);
+  color: var(--text-dark);
+
+  &:hover {
+    border-color: var(--color-hover);
+    color: var(--text-dark);
+  }
+
+  &:focus {
+    border-color: var(--color-focus);
+    color: var(--text-dark);
+  }
+
+  &:active,
+  &.active {
+    background-color: var(color-active);
+    color: var(--text-dark);
+  }
+}

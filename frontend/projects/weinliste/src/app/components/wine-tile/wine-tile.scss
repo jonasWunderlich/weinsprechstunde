@@ -1,3 +1,5 @@
+@use '../../../shared' as mixins;
+
 :host {
   display: block;
   border-radius: var(--radius-input);
@@ -23,15 +25,13 @@
 }
 
 .play-btn {
+  @include mixins.button();
   position: absolute;
   top: 0.5rem;
   left: 0.5rem;
   width: 2.25rem;
   height: 2.25rem;
   border-radius: 50%;
-  border: none;
-  background: rgba(123, 30, 43, 0.85);
-  color: #fff;
   font-size: 0.9rem;
   cursor: pointer;
   z-index: 2;

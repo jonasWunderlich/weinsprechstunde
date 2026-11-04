@@ -12,21 +12,33 @@
 
 .brand {
   display: flex;
-  align-items: center;
+  align-items: end;
   gap: 0.5rem;
   border: none;
   background: none;
   cursor: pointer;
-  color: var(--accent-wine);
+  color: var(--text-dark);
+
+  :hover {
+    color: var(--accent-link-hover);
+  }
 }
 
 .logo {
   font-size: 1.6rem;
+  height: 40px;
+  img {
+    height: 100%;
+  }
 }
 
 .app-name {
-  font-size: 1.25rem;
+  font-size: 2rem;
+  font-family: Cambria, Cochin, Georgia, Times, 'Times New Roman', serif;
+  font-family: Helvetica, Arial, sans-serif;
   font-weight: 700;
+  line-height: 0.8;
+  // text-transform: uppercase;
 }
 
 .menus {

@@ -39,7 +39,7 @@
   </div>
 
   <div class="filters">
-    <app-filter-field [descriptor]="searchDescriptor" />
+    <app-filter-field [descriptor]="searchDescriptor" class="search-input" />
     @for (d of visibleDescriptors(); track trackDescriptor($index, d)) {
       <app-filter-field [descriptor]="d" [removable]="true" (remove)="removeFilter($event)" />
     }

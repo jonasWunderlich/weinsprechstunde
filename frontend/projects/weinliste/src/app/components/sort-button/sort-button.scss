@@ -1,10 +1,9 @@
+@use '../../../shared' as mixins;
+
 .sort-select {
+  // @include mixins.button();
   height: 40px;
-  padding: 0 1rem;
-  border-radius: var(--radius-pill);
-  border: 1px solid var(--accent-wine);
-  background: var(--color-surface);
-  color: var(--text-dark);
+  padding: 0 1.5rem 0 1rem;
   font-size: 0.9rem;
   cursor: pointer;
   box-shadow: var(--box-shadow-subtle);

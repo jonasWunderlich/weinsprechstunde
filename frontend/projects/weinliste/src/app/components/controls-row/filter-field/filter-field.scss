@@ -1,3 +1,5 @@
+@use '../../../../shared' as mixins;
+
 .filter-field {
   display: flex;
   flex-direction: column;
@@ -43,12 +45,10 @@
 .ff-select,
 .ff-num,
 .ff-date {
+  @include mixins.filter-button();
   height: 36px;
   padding: 0 0.6rem;
-  border: 2px solid var(--accent-wine);
   border-radius: var(--radius-input);
-  background: var(--color-surface);
-  color: var(--text-dark);
   font-size: 0.85rem;
 }
 
@@ -67,6 +67,7 @@
 }
 
 .ff-multi-trigger {
+  @include mixins.filter-button();
   display: inline-flex;
   align-items: center;
   justify-content: space-between;
@@ -74,9 +75,6 @@
   min-width: 10rem;
   height: 36px;
   padding: 0 0.6rem;
-  border: 2px solid var(--accent-wine);
-  border-radius: var(--radius-input);
-  background: var(--color-surface);
   color: var(--text-dark);
   font-size: 0.85rem;
   cursor: pointer;

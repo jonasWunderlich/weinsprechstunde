@@ -1,19 +1,30 @@
 /* Globale Design-Tokens (Light Mode, Weinpalette), Resets, Grundtypografie. */
 
 :root {
-  --color-bg: #faf7f4;
+  --color-dark: #161211;
+  --color-bg: #FFF;
   --color-surface: #ffffff;
-  --text-dark: #2b2320;
+  --text-dark: #32022b;
   --text-muted: rgba(43, 35, 32, 0.55);
-  --accent-wine: #7b1e2b; /* Bordeaux als Leitfarbe */
-  --accent-link: #9c4a54;
-  --accent-link-hover: #c0392b;
-  --color-highlight: #c9a227; /* Gold für Rating-Kreis */
+  --accent-wine: #EF5B5B;
+  --accent-link: #20A39E;
+  --accent-link-hover: #EF5B5B;
+  --color-highlight: #B4C292; /* Gold für Rating-Kreis */
   --background-info-tile: rgba(255, 255, 255, 0.95);
   --padding-horizontal-md: 12px;
   --box-shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.12);
   --radius-pill: 20px;
   --radius-input: 8px;
+
+  --color-hover: #EF5B5B;
+  --color-active: #FFBA49;
+  --color-focus: #A4A9AD;
+
+  --color-button-bg: #20A39E;
+  --color-button-label: #FFF;
+  --color-filter-border: #FFF;
+  --color-filter-border: var(--color-button-bg);
+  --color-filter-background: #FFF;
 }
 
 *,
@@ -49,4 +60,56 @@ a:hover {
 
 button {
   font-family: inherit;
+}
+
+select,
+button {
+  border: none !important;
+  background-color: var(--color-button-bg);
+  color: var(--color-button-label);
+  border-radius: var(--radius-pill);
+
+  &:hover {
+    background-color: var(--color-hover);
+  }
+
+  &:focus {
+    background-color: var(--color-focus);
+  }
+
+  &:active,
+  &.active {
+    background-color: var(--color-active);
+  }
+}
+
+select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='m6 9 6 6 6-6' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 12px;
+}
+
+input {
+  border-radius: var(--radius-input);
+  border: 2px solid var(--color-filter-border);
+  border-radius: var(--radius-input);
+  color: var(--text-dark);
+
+  &:hover {
+    border-color: var(--color-hover);
+    color: var(--text-dark);
+  }
+
+  &:focus {
+    border-color: var(--color-focus);
+    color: var(--text-dark);
+  }
+
+  &:active,
+  &.active {
+    background-color: var(color-active);
+    color: var(--text-dark);
+  }
 }
