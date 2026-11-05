@@ -1,25 +1,31 @@
 .kiro/specs/weinliste/.config.kiro
-import/
-
-# Secrets / Zugangsdaten (niemals committen)
-.env
-.env.*
-weinsprechstunde.secrets.json
 
 # Python
 __pycache__/
 *.pyc
 .venv/
 
+# Secrets / Zugangsdaten (niemals committen)
+.env
+.env.*
+weinsprechstunde.secrets.json
+
 # Node / Angular
 node_modules/
 dist/
 
-# Generierte Artefakte
-export/images/*
-export/audio/*
-export/video/*
-!export/images/.gitkeep
-export/data/wines.json
+# Import Folder
+import/
+
+# Generierte Backup Artefakte
 backup/*
 !backup/.gitkeep
+
+# Generierte Export Artefakte
+export/data/wines.json
+export/audio/*
+export/images/*
+export/video/*
+!export/audio/.gitkeep
+!export/images/.gitkeep
+!export/video/.gitkeep
