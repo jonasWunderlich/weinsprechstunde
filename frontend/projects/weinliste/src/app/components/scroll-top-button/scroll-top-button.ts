@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
+import { FilterService } from '@weinsprechstunde/shared';
 
 /** Fixierter „nach oben"-Button, erscheint ab window.scrollY > 600. */
 @Component({
@@ -9,6 +10,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '
 })
 export class ScrollTopButtonComponent {
   private readonly destroyRef = inject(DestroyRef);
+  readonly filterService = inject(FilterService);
   readonly visible = signal(false);
 
   constructor() {
@@ -20,5 +22,9 @@ export class ScrollTopButtonComponent {
 
   scrollToTop(): void {
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  toggleInfos(): void {
+    this.filterService.infoToggleActive.set(!this.filterService.infoToggleActive());
   }
 }
