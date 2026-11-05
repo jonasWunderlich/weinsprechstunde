@@ -71,7 +71,7 @@ export class WineDetailDialogComponent {
   readonly hasMedia = computed(() => {
     const w = this.wine();
     return (
-      !!w && (mediaSrc(w.image) !== null || mediaSrc(w.audio) !== null || mediaSrc(w.video) !== null)
+      !!w && (mediaSrc(w.image) !== null || mediaSrc(w.audio, 'audio') !== null || mediaSrc(w.video, 'video') !== null)
     );
   });
 

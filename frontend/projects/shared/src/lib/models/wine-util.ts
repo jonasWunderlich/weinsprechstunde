@@ -2,6 +2,8 @@ import { Wine } from './wine.model';
 
 /** Server-Mount von deploy.remote_images_path, relativ zum Web-Root. */
 export const IMAGE_BASE = '/images/';
+export const VIDEO_BASE = '/video/';
+export const AUDIO_BASE = '/audio/';
 
 /**
  * „Feld vorhanden" = truthy / nicht-null / nicht-leerer-String / nicht-leeres-Array.
@@ -79,8 +81,9 @@ export function humanizeKey(key: string): string {
 }
 
 /** Baut die Medien-URL aus Dateiname + zentralem IMAGE_BASE; null bei fehlendem Wert. */
-export function mediaSrc(file: string | null | undefined): string | null {
-  return isPresent(file) ? IMAGE_BASE + file : null;
+export function mediaSrc(file: string | null | undefined, media: 'image' | 'video' | 'audio' = 'image'): string | null {
+  const base = media === 'image' ? IMAGE_BASE : media === 'video' ? VIDEO_BASE : AUDIO_BASE;
+  return isPresent(file) ? base + file : null;
 }
 
 /** de-Dezimalkomma, 2 Nachkommastellen, €-Suffix. null bei fehlendem Preis. */

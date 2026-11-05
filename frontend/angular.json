@@ -97,6 +97,16 @@
                   "glob": "**/*",
                   "input": "projects/weinliste/public/images",
                   "output": "images"
+                },
+                {
+                  "glob": "**/*",
+                  "input": "projects/weinliste/public/audio",
+                  "output": "audio"
+                },
+                {
+                  "glob": "**/*",
+                  "input": "projects/weinliste/public/videos",
+                  "output": "videos"
                 }
               ]
             }
