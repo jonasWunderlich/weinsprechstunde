@@ -11,6 +11,7 @@ import pytest
 
 from conftest import make_config, write_json
 from conftest import weinimport as wi
+from weinlib import ftp_transport as ft
 
 
 def make_backup_config(wi_mod, tmp_path, **overrides):
@@ -210,7 +211,7 @@ def test_remote_backup_uploads_single_files(tmp_path, monkeypatch):
     config = make_config(password="geheim", export_path=str(export_path), backup=backup)
 
     fake = FakeFTP()
-    monkeypatch.setattr(wi, "_ftps_connect", lambda *a, **k: fake)
+    monkeypatch.setattr(ft, "_ftps_connect", lambda *a, **k: fake)
 
     run_backup_at(monkeypatch, config, datetime(2024, 1, 1, 12, 0, 0))
 
@@ -230,7 +231,7 @@ def test_remote_backup_skipped_without_password(tmp_path, monkeypatch, capsys):
     monkeypatch.delenv("WEINSPRECHSTUNDE_DEPLOY_PASSWORD", raising=False)
 
     fake = FakeFTP()
-    monkeypatch.setattr(wi, "_ftps_connect", lambda *a, **k: fake)
+    monkeypatch.setattr(ft, "_ftps_connect", lambda *a, **k: fake)
 
     run_backup_at(monkeypatch, config, datetime(2024, 1, 1, 12, 0, 0))
 

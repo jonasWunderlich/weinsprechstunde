@@ -4,6 +4,7 @@ import pytest
 
 from conftest import make_config
 from conftest import weinimport as wi
+from weinlib import ftp_transport as ft
 
 
 # --- resolve_password -----------------------------------------------------
@@ -156,8 +157,8 @@ class MlsdFakeFTP(FakeFTP):
 
 
 def _patch_ftp(monkeypatch, fake):
-    """wi._ftps_connect liefert den Fake statt eine echte FTP_TLS-Verbindung."""
-    monkeypatch.setattr(wi, "_ftps_connect", lambda *a, **k: fake)
+    """ft._ftps_connect liefert den Fake statt eine echte FTP_TLS-Verbindung."""
+    monkeypatch.setattr(ft, "_ftps_connect", lambda *a, **k: fake)
     return fake
 
 
@@ -311,7 +312,7 @@ def test_deploy_uses_ftp_tls(tmp_path, monkeypatch):
         calls["n"] += 1
         return fake
 
-    monkeypatch.setattr(wi, "_ftps_connect", fake_connect)
+    monkeypatch.setattr(ft, "_ftps_connect", fake_connect)
 
     wi.phase_deploy(config)
     assert calls["n"] == 1
@@ -564,7 +565,7 @@ def test_download_remote_import_error_exits(monkeypatch, capsys):
     def boom(*a, **k):
         raise OSError("connection refused")
 
-    monkeypatch.setattr(wi, "_download_ftp", boom)
+    monkeypatch.setattr(ft, "_download_ftp", boom)
     with pytest.raises(SystemExit) as exc:
         wi.download_remote_import(config, "geheim")
     assert exc.value.code == 1
