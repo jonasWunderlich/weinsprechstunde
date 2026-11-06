@@ -1,0 +1,39 @@
+[
+  {
+    "name": "Keller Riesling Trocken",
+    "year": 2019,
+    "country": "Deutschland",
+    "origin": "Rheinhessen",
+    "grape": [
+      "Riesling"
+    ],
+    "producer": "Keller",
+    "price": 24.5,
+    "rating": 8.5,
+    "tasting_date": "2021-01-18",
+    "image": "2021-01-18-keller-riesling-trocken.jpg",
+    "note": "Zusatzfeld ausserhalb des Schemas",
+    "type": null,
+    "quality": null,
+    "audio": null,
+    "video": null,
+    "description": null
+  },
+  {
+    "name": "Unbekannter Rotwein",
+    "year": 2018,
+    "price": 6.99,
+    "rating": 7.0,
+    "country": null,
+    "origin": null,
+    "grape": null,
+    "type": null,
+    "producer": null,
+    "quality": null,
+    "tasting_date": null,
+    "image": null,
+    "audio": null,
+    "video": null,
+    "description": null
+  }
+]
