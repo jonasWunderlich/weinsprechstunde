@@ -67,8 +67,8 @@ class DeployConfig:
     remote_images_path: str
     remote_import_path: str
     # Eigener Remote-Unterordner für die statische Editor-App
-    # (frontend/dist/editor/browser/). Standard: "/wine_app/editor" – eine
-    # eigene URL im wine_app-Bereich (Req 17.1). Leer = Editor-Deploy
+    # (frontend/dist/editor/browser/), z. B. "/edit" – eine
+    # eigene URL (Req 17.1). Leer = Editor-Deploy
     # übersprungen (aus der Config entfernbar, ohne DeployConfig(**raw) zu
     # brechen).
     remote_editor_path: str = ""

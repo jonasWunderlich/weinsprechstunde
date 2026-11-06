@@ -36,9 +36,9 @@ MLSD: ein Roundtrip je Verzeichnis liefert Name und Typ, kein `_ftp_is_dir` nöt
 - Zeitvergleich per `MDTM` (`_ftp_up_to_date`); `--force-images` überspringt ihn für Bilder, Audio und Video (immer `STOR`).
 - Zugangsdaten nie in der Config.
 
-## Root-Rewrite und base-href
+## Auslieferung
 
-App liegt physisch unter `/wine_app`, ist unter `https://weinsprechstunde.de/` erreichbar. Manuell eingerichtetes Root-`.htaccess` (versioniert in `deploy/htaccess-webroot.txt`, NICHT vom Deploy verwaltet) schreibt intern nach `/wine_app/` um (kein `R=`-Redirect, SPA-Fallback auf `/wine_app/index.html`). `<base href="/">` bleibt; Assets `/data/...`, `/images/...` werden 1:1 auf `/wine_app/...` gemappt.
+Die App liegt direkt im Web-Root (`remote_path` = `/`) und ist unter `https://weinsprechstunde.de/` erreichbar, ohne Rewrite. `<base href="/">`; Assets `/data/...`, `/images/...`, `/audio/...`, `/video/...` liegen 1:1 unter diesen Pfaden.
 
 ## GitHub Actions (`.github/workflows/deploy.yml`)
 

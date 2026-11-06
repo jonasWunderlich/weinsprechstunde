@@ -11,7 +11,7 @@ Weinbewertungen: Import-JSONs werden im Editor gepflegt, per Pipeline zu `wines.
 | weinliste | `frontend/projects/weinliste/**` |
 | shared | `frontend/projects/shared/**` (Vertrag shared-api) |
 | pipeline | `import/` -> `export/`, `scripts/weinlib/{config,pipeline,backup}.py` (backup, optimize-images, prepare, export, image-export; Backup der bisherigen `wines.json` als eigener erster Schritt von `make deploy` bzw. Vollpipeline-Lauf, unabhängig von den übrigen Phasen), `wine-schema.json` |
-| deploy-ftp | `scripts/weinlib/{config,ftp_transport,deploy}.py`, `deploy/`, `*_probe.py` (FTPS/SFTP-Transport, Upload, Remote-Import-Download) |
+| deploy-ftp | `scripts/weinlib/{config,ftp_transport,deploy}.py`, `*_probe.py` (FTPS/SFTP-Transport, Upload, Remote-Import-Download) |
 
 Orchestrierung (Makefile, `.github/workflows/deploy.yml`) ist domänenlos: siehe `orchestration.md`.
 

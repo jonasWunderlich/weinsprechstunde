@@ -33,7 +33,7 @@ export/audio/, export/video/   Ausgabe image-export (Medien, unverändert kopier
   "video_export_dir": "./export/video",
   "image_resize_mode": "width",
   "image_resize_px": 1200,
-  "deploy": { "protocol": "ftpes", "remote_path": "/wine_app", "remote_images_path": "/wine_app/images", "remote_audio_path": "/wine_app/audio", "remote_video_path": "/wine_app/video", "remote_import_path": "/wine_app/data" },
+  "deploy": { "protocol": "ftpes", "remote_path": "/", "remote_images_path": "/images", "remote_audio_path": "/audio", "remote_video_path": "/video", "remote_import_path": "/data" },
   "backup": { "backup_dir": "./backup", "remote_backup_dir": "/backup", "max_last_backups": 10, "max_archival_backups": 24, "archival_interval_days": 30 }
 }
 ```

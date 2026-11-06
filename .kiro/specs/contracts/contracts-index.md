@@ -7,12 +7,12 @@
 | [export-format](export-format.md) | 1.1.0 | pipeline | weinliste, deploy-ftp |
 | [shared-api](shared-api.md) | 1.0.0 | shared | editor, weinliste |
 | [deploy-input](deploy-input.md) | 1.2.0 | deploy-ftp | deploy-ftp (Erwartung an pipeline/build) |
-| [build-output](build-output.md) | 1.0.0 | editor, weinliste | deploy-ftp |
+| [build-output](build-output.md) | 1.1.1 | editor, weinliste | deploy-ftp |
 
 ## Verträge je Domäne
 
-- editor: import-format, editor-output, shared-api (Build: build-output)
-- weinliste: export-format, shared-api (Build: build-output)
+- editor: import-format, editor-output, shared-api
+- weinliste: export-format, shared-api
 - pipeline: import-format, editor-output, export-format
 - deploy-ftp: deploy-input, build-output
 

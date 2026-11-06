@@ -105,8 +105,8 @@
                 },
                 {
                   "glob": "**/*",
-                  "input": "projects/weinliste/public/videos",
-                  "output": "videos"
+                  "input": "projects/weinliste/public/video",
+                  "output": "video"
                 }
               ]
             }

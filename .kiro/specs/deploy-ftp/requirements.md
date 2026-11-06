@@ -32,9 +32,9 @@ Verträge:
 6.5 Datei im Build-Output lokal nicht mehr vorhanden, aber unter `deploy.remote_path` auf dem Server → nur wenn sie die Endung `.js` oder `.css` hat, auf dem Server löschen (Prune). Alle anderen Dateien bleiben unberührt.
 6.6 `wines.json`, `wine-schema.json`, Bilder, Audio und Video werden auf dem Server nie gelöscht.
 6.7 Build-Artefakte unter `deploy.remote_path`.
-6.8 Bilder unter `deploy.remote_images_path` (`/wine_app/images`).
+6.8 Bilder unter `deploy.remote_images_path` (`/images`).
 6.8a Audio unter `deploy.remote_audio_path` (Default `/audio`), Video unter `deploy.remote_video_path` (Default `/video`); gleiche Regeln wie Bilder (flach, MDTM-Vergleich, nie löschen); leerer Pfad → diese Medienart übersprungen.
-6.9 `wines.json` und `wine-schema.json` unter `deploy.remote_import_path` (`/wine_app/data`); Frontend lädt zur Laufzeit aus `data/`.
+6.9 `wines.json` und `wine-schema.json` unter `deploy.remote_import_path` (`/data`); Frontend lädt zur Laufzeit aus `data/`.
 6.10 `deploy.password` in der Config nicht leer → als Passwort verwenden.
 6.11 `deploy.password` leer → `weinsprechstunde.secrets.json`, dann `WEINSPRECHSTUNDE_DEPLOY_PASSWORD`. Fehlt beides → Abbruch mit: „FEHLER: Kein Deploy-Passwort gefunden. Setze die Umgebungsvariable WEINSPRECHSTUNDE_DEPLOY_PASSWORD mit dem Server-Passwort, z. B.: export WEINSPRECHSTUNDE_DEPLOY_PASSWORD=deinPasswort". Deploy stoppt.
 6.12 Verbindungsfehler → Abbruch mit: „FEHLER: Verbindung zum Server [host] fehlgeschlagen. Server-Meldung: [Originalmeldung]. Bitte prüfe: (1) Ist der Hostname '[host]' korrekt? (2) Sind Benutzername und Passwort gültig? (3) Ist der Server erreichbar und das Protokoll ([protocol]) korrekt?" Deploy stoppt.

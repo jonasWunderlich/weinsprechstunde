@@ -160,7 +160,7 @@ def _protected_prefixes(config: Config) -> tuple[set[str], list[str]]:
     ``remote_video_path``), der Daten-/Import-Ordner (``remote_import_path``)
     und der Editor-Ordner (``remote_editor_path``). So kann der dist-Prune der
     öffentlichen Weinliste diese nie entfernen (Req 6.6, 17.1): Der Editor liegt
-    als eigener Unterbaum (z. B. ``/wine_app/editor``) unter ``remote_path`` und
+    als eigener Unterbaum (z. B. ``/edit``) unter ``remote_path`` und
     wird von einem separaten, eigenen Upload-/Prune-Schritt gepflegt – der
     weinliste-Prune darf ihn nicht anfassen.
     """
@@ -209,7 +209,7 @@ def _deploy_ftp(config: Config, password: str, force_images: bool = False) -> No
             if not _ftp_up_to_date(ftp, remote_file, local_file):
                 ft._upload_ftp(ftp, local_file, remote_file)
 
-        # 2) Prune: veraltete Serverdateien NUR unter /wine_app löschen;
+        # 2) Prune: veraltete .js/.css NUR unter remote_path löschen;
         #    images/, data/ und wines.json bleiben geschützt (Req 6.6).
         exact, prefixes = _protected_prefixes(config)
         _ftp_prune(ftp, remote_base, set(local_files.keys()), exact, prefixes)

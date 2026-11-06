@@ -1,11 +1,11 @@
 ---
 name: domain-deploy-ftp
-description: FTPS/SFTP-Deployment (scripts/weinlib/{config,ftp_transport,deploy}.py, deploy/, *_probe.py): Transport, Upload, Remote-Import-Download. Laden bei Arbeit an Deploy, FTP-Transport, Server-Upload oder Deploy-Specs.
+description: FTPS/SFTP-Deployment (scripts/weinlib/{config,ftp_transport,deploy}.py, *_probe.py): Transport, Upload, Remote-Import-Download. Laden bei Arbeit an Deploy, FTP-Transport, Server-Upload oder Deploy-Specs.
 inclusion: auto
 ---
 # Domäne deploy-ftp
 
-Scope: `scripts/weinlib/{config,ftp_transport,deploy}.py`, `deploy/`, `*_probe.py`, Tests in `scripts/tests/deploy_ftp/` (nur diesen Ordner lesen/ausführen: `make test-deploy`). `scripts/weinimport.py` ist nur die Fassade. Diese Domäne stellt nur den Transport; Backups gehören zur Pipeline. `backup.py` nutzt den Transport: Änderungen an `ftp_transport.py` erfordern zusätzlich `scripts/tests/pipeline/test_backup.py` (nur diese Datei, nicht den ganzen Pipeline-Ordner). Nicht lesen: editor, weinliste, shared, pipeline. Export- und Build-Ergebnisse gelten als Eingabe laut Vertrag.
+Scope: `scripts/weinlib/{config,ftp_transport,deploy}.py`, `*_probe.py`, Tests in `scripts/tests/deploy_ftp/` (nur diesen Ordner lesen/ausführen: `make test-deploy`). `scripts/weinimport.py` ist nur die Fassade. Diese Domäne stellt nur den Transport; Backups gehören zur Pipeline. `backup.py` nutzt den Transport: Änderungen an `ftp_transport.py` erfordern zusätzlich `scripts/tests/pipeline/test_backup.py` (nur diese Datei, nicht den ganzen Pipeline-Ordner). Nicht lesen: editor, weinliste, shared, pipeline. Export- und Build-Ergebnisse gelten als Eingabe laut Vertrag.
 
 ## Verträge
 - #[[file:.kiro/specs/contracts/deploy-input.md]]

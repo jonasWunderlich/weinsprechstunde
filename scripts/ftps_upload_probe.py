@@ -5,7 +5,7 @@ Hintergrund: Viele FTPS-Server (u. a. Pure-FTPd) verlangen, dass die
 Datenverbindung dieselbe TLS-Session wie der Kontrollkanal wiederverwendet.
 Pythons ftplib.FTP_TLS tut das standardmäßig NICHT -> Upload/Listing hängt.
 Diese Probe testet eine FTP_TLS-Variante mit Session-Reuse und lädt EINE
-kleine Testdatei nach /wine_app hoch, listet /wine_app und löscht die Datei
+kleine Testdatei nach remote_path hoch, listet remote_path und löscht die Datei
 wieder. Minimal-invasiv: nur eine Testdatei, danach wieder entfernt.
 
 Aufruf (Zugangsdaten aus weinsprechstunde.secrets.json ODER Env):
@@ -53,7 +53,7 @@ def load_creds():
     user = deploy.get("user") or secrets.get("user") or os.environ.get("WEINSPRECHSTUNDE_DEPLOY_USER", "")
     password = (deploy.get("password") or secrets.get("password")
                 or os.environ.get("WEINSPRECHSTUNDE_DEPLOY_PASSWORD", ""))
-    remote_path = deploy.get("remote_path", "/wine_app")
+    remote_path = deploy.get("remote_path", "/")
     return host, user, password, remote_path
 
 
@@ -73,8 +73,8 @@ def main() -> int:
     ftp.set_pasv(True)
     print("  Login OK, TLS aktiv.")
 
-    target_dir = remote_path.rstrip("/") or "/wine_app"
-    test_name = f"{target_dir}/_upload_probe_delete_me.txt"
+    target_dir = remote_path.rstrip("/") or "/"
+    test_name = f"{target_dir.rstrip('/')}/_upload_probe_delete_me.txt"
     try:
         print(f"  Listing {target_dir} (Datenkanal-Test) ...")
         names = ftp.nlst(target_dir)

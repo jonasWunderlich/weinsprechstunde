@@ -1,9 +1,10 @@
 # Vertrag: build-output
 
-- Version: 1.1.0
+- Version: 1.1.1
 - Produzent (Eigentümer): editor und weinliste (je eigener Build)
 - Konsumenten: deploy-ftp
 - Changelog:
+  - 1.1.1 (2026-11-07): Korrektur: Dev-Assets kopieren `public/video` nach `video` (vorher fälschlich `videos`).
   - 1.1.0 (2026-11-06): CI (`deploy.yml`) baut zusätzlich den Editor (`npm run build:editor`); Output-Pfade unverändert.
   - 1.0.0 (2026-11-06): Erstfassung aus Ist-Zustand.
 
@@ -17,7 +18,7 @@
 
 - Builder: `@angular/build:application`; `outputPath` `dist/weinliste` bzw. `dist/editor`.
 - Jeder Output enthält `index.html` im `browser/`-Ordner.
-- Weinliste-Build enthält keine Weindaten, Bilder, Audio, Video (diese kommen aus `export/`, siehe [export-format](export-format.md)). Nur die Development-Konfiguration kopiert `public/{data,images,audio,videos}` als Assets.
+- Weinliste-Build enthält keine Weindaten, Bilder, Audio, Video (diese kommen aus `export/`, siehe [export-format](export-format.md)). Nur die Development-Konfiguration kopiert `public/{data,images,audio,video}` als Assets.
 - Editor-Build ist statisch und enthält keine Weindaten.
 
 ## Ist-Zustand Build-Aufrufer (unverändert übernommen)
