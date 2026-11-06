@@ -32,7 +32,8 @@ from weinlib.ftp_transport import (
 from weinlib.pipeline import (
     ARCHIVE_DIR_NAME, IMAGE_EXTENSIONS, _round_to_decimals, apply_scaffold_mode,
     collect_image_files, collect_json_files, find_image_sibling, normalize_number_fields,
-    optimize_image, phase_export, phase_image_export, phase_optimize_images, phase_prepare,
+    optimize_image, phase_export, phase_image_export, phase_media_export,
+    phase_optimize_images, phase_prepare,
     read_exif_date, rename_file_group, slugify_name,
 )
 

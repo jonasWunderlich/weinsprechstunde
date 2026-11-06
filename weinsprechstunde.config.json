@@ -3,6 +3,8 @@
   "export_path": "./export/data/wines.json",
   "scaffold_mode": true,
   "image_export_dir": "./export/images",
+  "audio_export_dir": "./export/audio",
+  "video_export_dir": "./export/video",
   "image_resize_mode": "width",
   "image_resize_px": 1200,
   "optimize": {
@@ -14,6 +16,8 @@
     "protocol": "ftpes",
     "remote_path": "/",
     "remote_images_path": "/images",
+    "remote_audio_path": "/audio",
+    "remote_video_path": "/video",
     "remote_import_path": "/data",
     "remote_editor_path": "/edit"
   },

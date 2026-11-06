@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 from pathlib import Path
 
@@ -370,4 +371,50 @@ def phase_image_export(config: Config) -> None:
     sys.stderr.write(
         f"image-export: {scaled} skaliert, {skipped} bereits vorhanden "
         f"übersprungen, {missing} Quellen fehlten.\n"
+    )
+
+    phase_media_export(config)
+
+
+def phase_media_export(config: Config) -> None:
+    """Audio-/Video-Dateien unverändert nach audio_export_dir/video_export_dir kopieren.
+
+    Läuft als Teil der Phase image-export (gleiche Quellauflösung über die
+    eingesammelten, nicht archivierten JSON-Dateien). Zieldateiname = Feldwert
+    ohne Pfad (flach). Eine Kopie gilt als aktuell, wenn Größe gleich und
+    Ziel-mtime nicht älter als die Quelle ist (copy2 übernimmt die mtime).
+    Fehlende Quellen werden nur in der Zusammenfassung gezählt.
+    """
+    targets = (
+        ("audio", Path(config.audio_export_dir)),
+        ("video", Path(config.video_export_dir)),
+    )
+    copied = {"audio": 0, "video": 0}
+    skipped = 0
+    missing = 0
+    for json_file in collect_json_files(config.import_dir):
+        data = json.loads(json_file.read_text(encoding="utf-8"))
+        for field_name, export_dir in targets:
+            ref = data.get(field_name)
+            if not ref:
+                continue
+            src = json_file.parent / ref
+            if not src.is_file():
+                missing += 1
+                continue
+            dst = export_dir / Path(ref).name
+            if dst.exists():
+                s, d = src.stat(), dst.stat()
+                if d.st_size == s.st_size and d.st_mtime >= s.st_mtime:
+                    skipped += 1
+                    continue
+            export_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
+            copied[field_name] += 1
+
+    if not (copied["audio"] or copied["video"] or skipped or missing):
+        return  # keine Medien referenziert -> keine zusätzliche Zeile
+    sys.stderr.write(
+        f"media-export: {copied['audio']} Audio, {copied['video']} Video kopiert, "
+        f"{skipped} bereits vorhanden übersprungen, {missing} Quellen fehlten.\n"
     )

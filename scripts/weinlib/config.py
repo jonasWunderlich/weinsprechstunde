@@ -72,6 +72,10 @@ class DeployConfig:
     # übersprungen (aus der Config entfernbar, ohne DeployConfig(**raw) zu
     # brechen).
     remote_editor_path: str = ""
+    # Remote-Ziele für exportierte Audio-/Video-Dateien (wie remote_images_path).
+    # Leer = Upload dieser Medienart übersprungen.
+    remote_audio_path: str = "/audio"
+    remote_video_path: str = "/video"
     # host/user/password werden aus der Config, der Secrets-Datei oder aus
     # Umgebungsvariablen aufgelöst (Reihenfolge Config > Secrets > Env). Leerer
     # Default, damit aus der Config entfernte Felder DeployConfig(**raw["deploy"])
@@ -114,6 +118,10 @@ class Config:
     editor: EditorConfig
     backup: Optional[BackupConfig] = None
     optimize: Optional[OptimizeConfig] = None
+    # Exportziele für Audio/Video (Phase image-export); fehlende Schlüssel in der
+    # Config fallen auf diese Defaults zurück (rückwärtskompatibel).
+    audio_export_dir: str = "./export/audio"
+    video_export_dir: str = "./export/video"
 
 
 # ---------------------------------------------------------------------------
@@ -186,6 +194,8 @@ def load_config(path: str = CONFIG_PATH) -> Config:
         editor=editor,
         backup=backup,
         optimize=optimize,
+        audio_export_dir=raw.get("audio_export_dir") or "./export/audio",
+        video_export_dir=raw.get("video_export_dir") or "./export/video",
     )
 
 
