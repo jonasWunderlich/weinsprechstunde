@@ -854,3 +854,98 @@ def test_deploy_skips_editor_when_remote_editor_path_empty(tmp_path, monkeypatch
     assert not any(p.startswith("/wine_app/editor/") for p in fake.stored)
     # weinliste weiterhin deployt.
     assert f"{config.deploy.remote_path.rstrip('/')}/index.html" in fake.stored
+
+
+# --- Audio/Video-Deploy -------------------------------------------------------
+
+
+def _make_media(tmp_path):
+    audio = tmp_path / "export" / "audio"
+    video = tmp_path / "export" / "video"
+    audio.mkdir(parents=True)
+    video.mkdir(parents=True)
+    (audio / "a.mp3").write_bytes(b"a")
+    (video / "v.mp4").write_bytes(b"v")
+    return audio, video
+
+
+def _media_config(tmp_path, **kw):
+    return make_config(
+        password="geheim",
+        protocol="ftpes",
+        export_path=str(tmp_path / "export" / "data" / "wines.json"),
+        image_export_dir=str(tmp_path / "export" / "images"),
+        audio_export_dir=str(tmp_path / "export" / "audio"),
+        video_export_dir=str(tmp_path / "export" / "video"),
+        **kw,
+    )
+
+
+def test_deploy_uploads_audio_and_video(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _make_dist(tmp_path)
+    _make_media(tmp_path)
+    config = _media_config(tmp_path)
+    fake = FakeFTP()
+    _patch_ftp(monkeypatch, fake)
+    wi.phase_deploy(config)
+    assert "/wine_app/audio/a.mp3" in fake.stored
+    assert "/wine_app/video/v.mp4" in fake.stored
+
+
+def test_deploy_media_skipped_when_remote_up_to_date(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _make_dist(tmp_path)
+    audio, video = _make_media(tmp_path)
+    config = _media_config(tmp_path)
+    fake = FakeFTP(mtimes={
+        "/wine_app/audio/a.mp3": (audio / "a.mp3").stat().st_mtime + 100,
+        "/wine_app/video/v.mp4": (video / "v.mp4").stat().st_mtime - 1000,
+    })
+    _patch_ftp(monkeypatch, fake)
+    wi.phase_deploy(config)
+    assert "/wine_app/audio/a.mp3" not in fake.stored
+    assert "/wine_app/video/v.mp4" in fake.stored
+
+
+def test_deploy_empty_media_path_skips_that_media(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _make_dist(tmp_path)
+    _make_media(tmp_path)
+    config = _media_config(tmp_path, remote_audio_path="")
+    fake = FakeFTP()
+    _patch_ftp(monkeypatch, fake)
+    wi.phase_deploy(config)
+    assert not any(p.endswith("a.mp3") for p in fake.stored)
+    assert "/wine_app/video/v.mp4" in fake.stored
+
+
+def test_prune_never_deletes_audio_and_video(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _make_dist(tmp_path)
+    config = _media_config(tmp_path)  # keine lokalen Medien
+    base = config.deploy.remote_path
+    fake = MlsdFakeFTP(
+        mlsd_listing={
+            base: [
+                ("index.html", {"type": "file"}),
+                ("old.js", {"type": "file"}),
+                ("audio", {"type": "dir"}),
+                ("video", {"type": "dir"}),
+            ],
+        },
+        dirs={base},
+    )
+    _patch_ftp(monkeypatch, fake)
+    wi.phase_deploy(config)
+    assert any(p.endswith("old.js") for p in fake.deleted)
+    assert not any("/audio" in p or "/video" in p for p in fake.deleted)
+    # Geschützte Medienordner werden nicht einmal aufgelistet.
+    assert f"{base}/audio" not in fake.mlsd_calls
+    assert f"{base}/video" not in fake.mlsd_calls
+
+
+def test_protected_prefixes_include_media(tmp_path):
+    config = make_config()
+    _, prefixes = wi._protected_prefixes(config)
+    assert "audio/" in prefixes and "video/" in prefixes

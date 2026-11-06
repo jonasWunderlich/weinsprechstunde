@@ -41,6 +41,8 @@ def make_config(**overrides):
         remote_images_path=overrides.pop("remote_images_path", "/wine_app/images"),
         remote_import_path=overrides.pop("remote_import_path", "/wine_app/data"),
         remote_editor_path=overrides.pop("remote_editor_path", "/wine_app/editor"),
+        remote_audio_path=overrides.pop("remote_audio_path", "/wine_app/audio"),
+        remote_video_path=overrides.pop("remote_video_path", "/wine_app/video"),
     )
     editor = weinimport.EditorConfig(path="/editor", password_hash="")
     backup = overrides.pop("backup", None)

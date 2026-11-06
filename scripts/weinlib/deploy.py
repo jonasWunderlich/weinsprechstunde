@@ -152,7 +152,8 @@ def _protected_prefixes(config: Config) -> tuple[set[str], list[str]]:
     Gibt (exakte Relativpfade, Verzeichnis-Präfixe) zurück. Geschützt sind die
     hochgeladene ``wines.json`` (Basename aus ``export_path``) sowie – falls sie
     unterhalb von ``remote_path`` liegen – der komplette Bilderordner
-    (``remote_images_path``), der Daten-/Import-Ordner (``remote_import_path``)
+    (``remote_images_path``), die Medienordner (``remote_audio_path``,
+    ``remote_video_path``), der Daten-/Import-Ordner (``remote_import_path``)
     und der Editor-Ordner (``remote_editor_path``). So kann der dist-Prune der
     öffentlichen Weinliste diese nie entfernen (Req 6.6, 17.1): Der Editor liegt
     als eigener Unterbaum (z. B. ``/wine_app/editor``) unter ``remote_path`` und
@@ -165,6 +166,8 @@ def _protected_prefixes(config: Config) -> tuple[set[str], list[str]]:
 
     for sub in (
         config.deploy.remote_images_path,
+        config.deploy.remote_audio_path,
+        config.deploy.remote_video_path,
         config.deploy.remote_import_path,
         config.deploy.remote_editor_path,
     ):
@@ -224,16 +227,17 @@ def _deploy_ftp(config: Config, password: str, force_images: bool = False) -> No
                 ft._upload_ftp(ftp, schema_json, remote_schema)
 
         # 4) Bilder nach remote_images_path ablegen (nie löschen).
-        images_dir = Path(config.image_export_dir)
-        if images_dir.exists():
-            ft._ftp_makedirs(ftp, config.deploy.remote_images_path)
-            for img in images_dir.iterdir():
-                if img.is_file():
-                    remote_img = f"{config.deploy.remote_images_path.rstrip('/')}/{img.name}"
-                    # Mit --force-images werden ALLE Bilder neu hochgeladen
-                    # (kein MDTM/Timestamp-Vergleich); sonst nur neuere/fehlende.
-                    if force_images or not _ftp_up_to_date(ftp, remote_img, img):
-                        ft._upload_ftp(ftp, img, remote_img)
+        #    Mit --force-images werden ALLE Bilder neu hochgeladen (kein
+        #    MDTM/Timestamp-Vergleich); sonst nur neuere/fehlende.
+        _upload_flat_dir(ftp, Path(config.image_export_dir),
+                         config.deploy.remote_images_path, force_images)
+
+        # 4b) Audio/Video wie Bilder (flach, MDTM-Vergleich, nie löschen);
+        #     leerer Remote-Pfad = Medienart übersprungen.
+        _upload_flat_dir(ftp, Path(config.audio_export_dir),
+                         config.deploy.remote_audio_path, force_images)
+        _upload_flat_dir(ftp, Path(config.video_export_dir),
+                         config.deploy.remote_video_path, force_images)
 
         # 5) Statische Editor-App in ihren eigenen Remote-Unterordner ablegen
         #    (Req 16.3, 17.1). Separater, in sich geschlossener Schritt: Upload
@@ -245,6 +249,23 @@ def _deploy_ftp(config: Config, password: str, force_images: bool = False) -> No
         _deploy_editor(ftp, config, force_images=force_images)
     finally:
         ftp.quit()
+
+
+def _upload_flat_dir(ftp: "ftplib.FTP", local_dir: Path, remote_dir: str,
+                     force: bool = False) -> None:
+    """Dateien direkt in ``local_dir`` nach ``remote_dir`` hochladen (nie löschen).
+
+    Übersprungen wird, wenn ``remote_dir`` leer ist oder ``local_dir`` fehlt.
+    Ohne ``force`` nur neuere/fehlende Dateien (MDTM-Vergleich).
+    """
+    if not remote_dir or not local_dir.exists():
+        return
+    ft._ftp_makedirs(ftp, remote_dir)
+    for item in sorted(local_dir.iterdir()):
+        if item.is_file():
+            remote_file = f"{remote_dir.rstrip('/')}/{item.name}"
+            if force or not _ftp_up_to_date(ftp, remote_file, item):
+                ft._upload_ftp(ftp, item, remote_file)
 
 
 def _deploy_editor(ftp: "ftplib.FTP", config: Config, force_images: bool = False) -> None:
