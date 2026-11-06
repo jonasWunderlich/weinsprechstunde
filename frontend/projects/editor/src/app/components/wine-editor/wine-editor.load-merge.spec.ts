@@ -525,6 +525,35 @@ describe('WineEditor: frisch laden und Cache nach dem Speichern aktualisieren', 
       c.fixture.detectChanges();
       expect(c.el.querySelector('[data-testid="flush-notice"]')).toBeNull();
     });
+    it('archiviert nicht, wenn das Sichern ausstehender Eingaben scheitert', async () => {
+      const c = await setup(files());
+      c.select('a.json');
+      await c.settle();
+      c.disk.externalChange('a.json', { name: 'Alpha extern' });
+      c.type('price', '9.5');
+
+      await c.fixture.componentInstance.archiveEntry();
+      await c.settle();
+
+      expect(c.state.selectedId()).toBe('a.json');
+      expect(c.disk.wineOnDisk('a.json').name).toBe('Alpha extern');
+      const notice = c.el.querySelector('[data-testid="flush-notice"]');
+      expect(notice?.textContent).toContain('Archivieren abgebrochen');
+      expect(notice?.textContent).not.toContain('erneut öffnen');
+    });
+
+    it('setzt den Fokus auf den Konfliktdialog', async () => {
+      const c = await setup(files());
+      c.select('a.json');
+      await c.settle();
+      c.disk.externalChange('a.json', { name: 'Alpha extern' });
+      c.type('name', 'Alpha lokal');
+      await c.settle(500);
+
+      const banner = conflictBanner(c.el) as HTMLElement;
+      expect(banner).not.toBeNull();
+      expect(document.activeElement).toBe(banner);
+    });
   });
 });
 

@@ -235,6 +235,11 @@ export class EditorSaveService {
     return this.slot?.lastModified ?? 0;
   }
 
+  /** `true`, wenn für das Feld noch eine Eingabe im Debounce wartet. */
+  hasPending(field: string): boolean {
+    return this.pending.has(field);
+  }
+
   /** Bricht alle laufenden Debounce-Timer ab, ohne zu speichern. */
   clearTimers(): void {
     for (const p of this.pending.values()) clearTimeout(p.timer);

@@ -28,7 +28,7 @@
     <header class="wine-editor__header">
       <h2 class="wine-editor__title wine-editor__title--placeholder">Eintrag nicht lesbar</h2>
     </header>
-    <div class="wine-editor__status wine-editor__status--error" role="alert" data-testid="load-error">
+    <div #loadErrorBox tabindex="-1" class="wine-editor__status wine-editor__status--error" role="alert" data-testid="load-error">
       {{ loadErr }} Bitte oben auf „Aktualisieren“ klicken, um die Liste neu einzulesen. Dieser
       Eintrag kann nicht gespeichert werden.
     </div>
@@ -135,7 +135,7 @@
     }
 
     @if (s.status === 'conflict') {
-      <div class="wine-editor__conflict" role="alertdialog" aria-labelledby="conflict-title" data-testid="conflict-banner">
+      <div #conflictBox tabindex="-1" class="wine-editor__conflict" role="alertdialog" aria-labelledby="conflict-title" data-testid="conflict-banner">
         <p id="conflict-title">
           Diese Datei wurde extern verändert (z. B. durch die Cloud-Synchronisation). Bei diesen
           Feldern unterscheiden sich beide Versionen. Bitte je Feld eine Version wählen.

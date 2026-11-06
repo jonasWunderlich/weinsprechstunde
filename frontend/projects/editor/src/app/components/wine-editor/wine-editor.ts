@@ -7,6 +7,8 @@ import {
   inject,
   signal,
   untracked,
+  viewChild,
+  ElementRef,
 } from '@angular/core';
 import { Wine, WineSchemaField, distinctValuesForField, isPresent } from '@weinsprechstunde/shared';
 import { EditorStateService } from '../../services/editor-state.service';
@@ -198,7 +200,14 @@ export class WineEditorComponent {
       .filter((s) => s.name.trim() !== ''),
   );
 
+  private readonly conflictBox = viewChild<ElementRef<HTMLElement>>('conflictBox');
+  private readonly loadErrorBox = viewChild<ElementRef<HTMLElement>>('loadErrorBox');
+
   constructor() {
+    // Fokus auf Konfliktdialog bzw. Lesefehler-Warnung, sobald sie erscheinen.
+    effect(() => this.conflictBox()?.nativeElement.focus());
+    effect(() => this.loadErrorBox()?.nativeElement.focus());
+
     // Erfolgreiche Speichervorgänge halten den Scan-Cache aktuell (Req 17.6).
     this.save.onSaved = (path, wine, lastModified) =>
       this.state.applyEntryState(path, wine, lastModified);
@@ -247,11 +256,12 @@ export class WineEditorComponent {
    * Sichert ausstehende Eingaben des bisher gebundenen Eintrags (statt sie zu verwerfen).
    * Schlägt das fehl, bleibt ein Hinweis stehen ({@link flushNotice}).
    */
-  private flushPending(): Promise<void> {
+  private flushPending(context: 'switch' | 'archive' = 'switch'): Promise<boolean> {
     const run = this.save.flush().then((failure) => {
-      if (failure) this.flushNotice.set(flushMessage(failure));
+      if (failure) this.flushNotice.set(flushMessage(failure, context));
+      return failure === null;
     });
-    this.pendingFlush = this.pendingFlush.then(() => run);
+    this.pendingFlush = this.pendingFlush.then(() => run.then(() => undefined));
     return run;
   }
 
@@ -352,7 +362,10 @@ export class WineEditorComponent {
     const known = new Set(schema.map((f) => f.field));
     this.values.update((v) => {
       const next = { ...v };
-      for (const f of fields) if (known.has(f)) next[f] = this.formValue(wine, f);
+      // Felder mit noch wartender Eingabe nicht überschreiben (sie werden danach gespeichert).
+      for (const f of fields) {
+        if (known.has(f) && !this.save.hasPending(f)) next[f] = this.formValue(wine, f);
+      }
       return next;
     });
     if (fields.some((f) => !known.has(f))) this.extraFields.set(this.extrasOf(wine, schema));
@@ -700,7 +713,8 @@ export class WineEditorComponent {
     const item = this.created();
     if (!item) return;
     // Ausstehende Eingaben zuerst sichern, damit sie nicht auf einen verschobenen Pfad zielen.
-    await this.flushPending();
+    // Scheitert die Sicherung, wird nicht archiviert (sonst gingen die Eingaben verloren).
+    if (!(await this.flushPending('archive'))) return;
     await this.state.archiveEntry(item.entry);
   }
 
@@ -724,10 +738,13 @@ function describeLoadError(err: unknown): string {
 }
 
 /** Hinweistext, wenn ausstehende Eingaben beim Wechsel nicht gespeichert werden konnten. */
-function flushMessage(failure: SaveFailure): string {
+function flushMessage(failure: SaveFailure, context: 'switch' | 'archive'): string {
   const reason =
     failure.status === 'conflict'
       ? 'Die Datei wurde extern verändert.'
       : `Fehler beim Speichern: ${failure.error ?? 'unbekannt'}.`;
+  if (context === 'archive') {
+    return `Archivieren abgebrochen: Änderungen an „${failure.path}“ konnten nicht gespeichert werden. ${reason} Der Eintrag wurde nicht archiviert.`;
+  }
   return `Änderungen an „${failure.path}“ wurden beim Wechsel nicht gespeichert. ${reason} Bitte den Eintrag erneut öffnen und die Änderung wiederholen.`;
 }

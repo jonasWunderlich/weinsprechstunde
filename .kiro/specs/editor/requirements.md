@@ -58,7 +58,7 @@ Formular
 Auto-Save
 17.21 Schreiben in die JSON ohne manuelle Aktion, frühestens 500 ms nach der letzten Eingabe im Feld (Debounce 500 ms pro Feld).
 17.21a Speichervorgänge eines Eintrags laufen nacheinander; jeder baut auf Objekt und Zeitstempel des vorherigen auf, sodass bei fast gleichzeitigen Änderungen mehrerer Felder keine Änderung verloren geht.
-17.21b Beim Wechsel des Eintrags (und vor dem Archivieren) werden noch im Debounce wartende Eingaben sofort gespeichert statt verworfen. Scheitert das (Konflikt, Fehler), erscheint ein schließbarer Hinweis (`role="alert"`) mit dem Dateipfad; es wird nichts überschrieben.
+17.21b Beim Wechsel des Eintrags (und vor dem Archivieren) werden noch im Debounce wartende Eingaben sofort gespeichert statt verworfen. Scheitert das (Konflikt, Fehler), erscheint ein schließbarer Hinweis (`role="alert"`) mit dem Dateipfad; es wird nichts überschrieben. Vor dem Archivieren wird in diesem Fall abgebrochen (Eintrag bleibt unarchiviert, Hinweis nennt den Abbruch). Von der Platte übernommene Felder überschreiben keine Eingabe, die noch im Debounce wartet. Konfliktdialog und Lesefehler-Warnung erhalten beim Erscheinen den Fokus.
 17.22 `number`-Felder typrichtig als JSON-Zahl (`year` Ganzzahl, `price` 2, `rating` 1 Nachkommastelle), Dezimal-Komma akzeptiert (`"6,99"` → `6.99`), konsistent zur Normalisierung der Pipeline.
 17.23 Erfolgreicher Auto-Save → Speicherstatus-Indikator „Erfolg".
 17.24 Fehlgeschlagener Auto-Save → Indikator „Fehler" mit erkennbarer Fehleranzeige; zuletzt eingegebene Feldinhalte bleiben erhalten.
