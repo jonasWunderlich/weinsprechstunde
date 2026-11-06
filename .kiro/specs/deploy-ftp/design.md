@@ -9,7 +9,7 @@ Verträge:
 | Aufruf | Verhalten |
 |---|---|
 | `python weinimport.py deploy` | Phase deploy |
-| `python weinimport.py deploy --force-images` | alle Bilder neu hochladen; auch `make deploy FORCE_IMAGES=1` |
+| `python weinimport.py deploy --force-images` | alle Bilder, Audio und Video neu hochladen; auch `make deploy FORCE_IMAGES=1` |
 | `make deploy` | Import-Phasen + Builds (siehe build-output) + Phase deploy |
 
 ## Phase deploy
@@ -30,10 +30,10 @@ MLSD: ein Roundtrip je Verzeichnis liefert Name und Typ, kein `_ftp_is_dir` nöt
 ## Deploy-Logik
 
 - Build-Wurzel: `_resolve_dist_dir` (Reihenfolge in deploy-input). `index.html` landet direkt unter `remote_path`.
-- Reihenfolge: Weinliste-Dist → Prune (nur unter `remote_path`) → `wines.json` + `wine-schema.json` nach `remote_import_path` → Bilder nach `remote_images_path` → Editor-Dist nach `remote_editor_path`.
-- Prune: `_protected_prefixes(config)` = `images/`, `data/`, `wines.json`-Basename, `remote_editor_path`; `_ftp_prune` steigt in geschützte Teilbäume nicht hinab. Web-Root und Root-`.htaccess` bleiben unberührt.
+- Reihenfolge: Weinliste-Dist → Prune (nur unter `remote_path`) → `wines.json` + `wine-schema.json` nach `remote_import_path` → Bilder nach `remote_images_path` → Audio nach `remote_audio_path` → Video nach `remote_video_path` (beide via `_upload_flat_dir`, leerer Pfad = übersprungen) → Editor-Dist nach `remote_editor_path`.
+- Prune: `_protected_prefixes(config)` = `images/`, `audio/`, `video/`, `data/`, `wines.json`-Basename, `remote_editor_path`; `_ftp_prune` steigt in geschützte Teilbäume nicht hinab. Web-Root und Root-`.htaccess` bleiben unberührt.
 - Kein Pre-Deploy-Backup (Webspace ohne serverseitige Kopie; Live-Stand wird bewusst überschrieben).
-- Zeitvergleich per `MDTM` (`_ftp_up_to_date`); `--force-images` überspringt ihn für Bilder (immer `STOR`).
+- Zeitvergleich per `MDTM` (`_ftp_up_to_date`); `--force-images` überspringt ihn für Bilder, Audio und Video (immer `STOR`).
 - Zugangsdaten nie in der Config.
 
 ## Root-Rewrite und base-href
@@ -56,4 +56,4 @@ Trigger: Push auf `main`. Job `deploy` (ubuntu-latest): `actions/checkout@v4`, `
 
 ## Testing Strategy
 
-pytest in `scripts/tests/deploy_ftp/` (`make test-deploy`), Fake-FTP: Timestamp-Vergleich, selektives Löschen, geschützte Präfixe (Prune betritt sie nicht), MLSD-Fallback, `--force-images`, Passwort-Fallback, Dist-Auflösung (`_resolve_dist_dir`).
+pytest in `scripts/tests/deploy_ftp/` (`make test-deploy`), Fake-FTP: Timestamp-Vergleich, selektives Löschen, geschützte Präfixe (Prune betritt sie nicht), MLSD-Fallback, `--force-images`, Audio/Video-Upload (inkl. leerer Pfad, MDTM-Skip, Prune-Schutz), Passwort-Fallback, Dist-Auflösung (`_resolve_dist_dir`).

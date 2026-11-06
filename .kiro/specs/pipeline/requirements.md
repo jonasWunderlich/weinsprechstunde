@@ -32,7 +32,7 @@ Verträge:
 1.9 `remote`: Import-Ordner vor `prepare` per FTPES herunterladen; Quelle `deploy.remote_import_path`.
 1.10 Download nutzt dieselben Verbindungsparameter und dasselbe Secrets-Handling (Config > Secrets-Datei > Umgebung) wie der Deploy.
 1.11 Schlägt der Download fehl → lesbare Fehlermeldung mit Serverpfad und Server-Meldung, Abbruch.
-1.12 `image_export_dir` (String): Zielpfad skalierter Bildkopien.
+1.12 `image_export_dir` (String): Zielpfad skalierter Bildkopien. Optional `audio_export_dir` / `video_export_dir` (Defaults `./export/audio` / `./export/video`).
 1.13 `image_resize_mode` (`"width"` | `"height"`) und `image_resize_px` (Integer).
 1.14 `deploy`-Objekt mit `protocol` (`"ftpes"`), `remote_path`, `remote_images_path`, `remote_import_path`; `host`, `user`, `password` stehen NICHT in der Config.
 1.15 Fehlen `host`/`user`/`password` oder sind leer → `weinsprechstunde.secrets.json` (unversioniert, neben der Config), dann `WEINSPRECHSTUNDE_DEPLOY_HOST|USER|PASSWORD`. Fehlende Secrets-Datei ist kein Fehler.
@@ -82,6 +82,10 @@ Verträge:
 4.10 Kopie fehlt oder ist älter → neu skalieren.
 4.11 Referenzierte Bilddatei fehlt → weiter mit nächstem Eintrag, keine Warnung pro Datei; Zählung in der Zusammenfassung.
 4.12 Übersprungene Bilder still; am Ende höchstens EINE Zeile auf stderr (z. B. „image-export: X skaliert, Y bereits vorhanden übersprungen, Z Quellen fehlten.").
+
+4.13 Die Phase `image-export` exportiert zusätzlich Audio und Video (keine neue Phase): Dateien, die `audio`/`video` der nicht archivierten JSONs nennen, werden unverändert nach `audio_export_dir` (Default `./export/audio`) bzw. `video_export_dir` (Default `./export/video`) kopiert; Dateiname = Feldwert ohne Pfad.
+4.14 Zieldatei mit gleicher Größe und mtime >= Quelle → nicht erneut kopieren. Fehlende Quelle → weiter, nur Zählung. Werden Medien referenziert, folgt eine zweite Zeile `media-export: A Audio, V Video kopiert, Y bereits vorhanden übersprungen, Z Quellen fehlten.`; ohne Medien keine Zeile.
+4.15 `prepare` benennt beim Umbenennen JSON, Bild, Audio und Video mit (Feld `video` bleibt konsistent).
 
 ### Requirement 15 (Teil): Eigenständigkeit
 

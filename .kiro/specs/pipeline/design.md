@@ -16,6 +16,7 @@ import/        (import_dir)    JSON + Bild + Audio + Video, rekursiv; _archive/ 
 backup/                        last_*.json, archival_*.json, .last_archival
 export/data/wines.json         Ausgabe export
 export/images/                 Ausgabe image-export
+export/audio/, export/video/   Ausgabe image-export (Medien, unverändert kopiert)
 ```
 
 `import/` → `prepare` (in place) → `export` → `export/data/wines.json`; `image-export` → `export/images/`. `backup` kopiert vorher `export_path`. Der Remote-Import-Download füllt `import/` vor `prepare`.
@@ -28,9 +29,11 @@ export/images/                 Ausgabe image-export
   "export_path": "./export/data/wines.json",
   "scaffold_mode": true,
   "image_export_dir": "./export/images",
+  "audio_export_dir": "./export/audio",
+  "video_export_dir": "./export/video",
   "image_resize_mode": "width",
   "image_resize_px": 1200,
-  "deploy": { "protocol": "ftpes", "remote_path": "/wine_app", "remote_images_path": "/wine_app/images", "remote_import_path": "/wine_app/data" },
+  "deploy": { "protocol": "ftpes", "remote_path": "/wine_app", "remote_images_path": "/wine_app/images", "remote_audio_path": "/wine_app/audio", "remote_video_path": "/wine_app/video", "remote_import_path": "/wine_app/data" },
   "backup": { "backup_dir": "./backup", "remote_backup_dir": "/backup", "max_last_backups": 10, "max_archival_backups": 24, "archival_interval_days": 30 }
 }
 ```
@@ -82,6 +85,8 @@ Alle gültigen Objekte (mit `name`) einlesen; `with_date` absteigend nach `tasti
 
 Pro JSON mit `image`: Quelle `json.parent / image`; fehlt → `missing++`. Ziel `image_export_dir / image` (flach); Ziel existiert und `mtime >= src.mtime` → `skipped++`. Sonst Pillow `thumbnail` (`width`: `(px, 99999)`, `height`: `(99999, px)`), `save(format=img.format)`, `scaled++`. Am Ende eine Zeile: `image-export: X skaliert, Y bereits vorhanden übersprungen, Z Quellen fehlten.`
 
+Medien: `phase_image_export` ruft am Ende `phase_media_export(config)` auf. Pro JSON mit `audio`/`video`: Quelle `json.parent / wert`; fehlt → `missing++`; Ziel `audio_export_dir|video_export_dir / basename(wert)`; gleiche Größe und `mtime >= src.mtime` → `skipped++`; sonst `shutil.copy2` (übernimmt mtime). Zusätzliche Zeile `media-export: …` nur, wenn Medien referenziert sind. Kein Transkodieren.
+
 Ruhiges Logging: weder prepare noch image-export schreiben Warnungen pro übersprungener Datei; nur die eine Zusammenfassungszeile.
 
 ## Data Models (Python)
@@ -89,8 +94,8 @@ Ruhiges Logging: weder prepare noch image-export schreiben Warnungen pro übersp
 - `Wine` (dataclass): Schemafelder optional, `name: str` Pflicht, `extra: dict` für Zusatzfelder.
 - `SchemaField`: `field`, `type` (`text|number|date|rating|multi-value`), `filter_type`, `default_filter`, `decimals: int|None`.
 - `BackupConfig`: `backup_dir`, `max_last_backups`, `max_archival_backups`, `archival_interval_days`, `remote_backup_dir|None`.
-- `DeployConfig`: `protocol`, `remote_path`, `remote_images_path`, `remote_import_path`, `host`, `user`, `password` (zur Laufzeit aufgelöst).
-- `Config`: `import_dir`, `import_source`, `export_path`, `scaffold_mode`, `image_export_dir`, `image_resize_mode`, `image_resize_px`, `deploy`, `backup|None`. Kein `EditorConfig`.
+- `DeployConfig`: `protocol`, `remote_path`, `remote_images_path`, `remote_audio_path`, `remote_video_path`, `remote_import_path`, `host`, `user`, `password` (zur Laufzeit aufgelöst).
+- `Config`: `import_dir`, `import_source`, `export_path`, `scaffold_mode`, `image_export_dir`, `audio_export_dir`, `video_export_dir`, `image_resize_mode`, `image_resize_px`, `deploy`, `backup|None`. Kein `EditorConfig`.
 
 ## Bibliotheken (`scripts/requirements.txt`)
 
