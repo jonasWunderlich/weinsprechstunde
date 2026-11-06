@@ -115,6 +115,9 @@
         },
         "serve": {
           "builder": "@angular/build:dev-server",
+          "options": {
+            "port": 5200
+          },
           "configurations": {
             "production": {
               "buildTarget": "weinliste:build:production"
@@ -184,6 +187,9 @@
         },
         "serve": {
           "builder": "@angular/build:dev-server",
+          "options": {
+            "port": 5300
+          },
           "configurations": {
             "production": {
               "buildTarget": "editor:build:production"
