@@ -6,25 +6,20 @@
   --color-focus: rgb(0, 83, 135);
   --color-active: #ef5b5b;
   --color-highlight: #b4c292;
-
   --color-critical: red;
   --color-black: #161211;
   --color-white: #FFF;
-
-  --text-color-light: var(--color-white);
   --text-color-dark: #161211;
+  --text-color-dark: #3e3432;
+  --text-color-light: var(--color-white);
   --text-color-muted: rgba(43, 35, 32, 0.55);
-
   --color-background-main: var(--color-white);
   --color-background-surface: var(--color-white);
   --color-background-info-tile: rgba(255, 255, 255, 0.95);
-
   --color-button-bg: var(--color-accent);
   --color-button-label: var(--text-color-light);
-
   --color-filter-border: var(--color-accent);
   --color-filter-background: var(--text-color-light);
-
   --box-shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.12);
   --radius-pill: 8px;
   --radius-input: 8px;

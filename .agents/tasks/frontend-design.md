@@ -1124,19 +1124,29 @@ Dreistufige, komponentennahe Organisation in Anlehnung an die Album-App, aber au
 1. **Globale Design-Tokens** in `src/styles.scss` als CSS-Custom-Properties unter `:root` (Light Mode, kein Dark Mode). Eigene Weinpalette statt der Album-Farben, z. B.:
    ```scss
    :root {
-     --color-bg: #faf7f4;
-     --color-surface: #ffffff;
-     --text-dark: #2b2320;
-     --text-muted: rgba(43, 35, 32, 0.55);
-     --accent-wine: #7b1e2b;        /* Bordeaux als Leitfarbe */
-     --accent-link: #9c4a54;
-     --accent-link-hover: #c0392b;
-     --color-highlight: #c9a227;    /* Gold für Rating-Kreis */
-     --background-info-tile: rgba(255, 255, 255, 0.95);
-     --padding-horizontal-md: 12px;
-     --box-shadow-subtle: 0 1px 3px rgba(0,0,0,0.12);
-     --radius-pill: 20px;
-     --radius-input: 8px;
+      --color-accent: rgb(0, 158, 255);
+      --color-hover: #ffba49;
+      --color-focus: rgb(0, 83, 135);
+      --color-active: #ef5b5b;
+      --color-highlight: #b4c292;
+      --color-critical: red;
+      --color-black: #161211;
+      --color-white: #FFF;
+      --text-color-light: var(--color-white);
+      --text-color-dark: #161211;
+      --text-color-muted: rgba(43, 35, 32, 0.55);
+      --color-background-main: var(--color-white);
+      --color-background-surface: var(--color-white);
+      --color-background-info-tile: rgba(255, 255, 255, 0.95);
+      --color-button-bg: var(--color-accent);
+      --color-button-label: var(--text-color-light);
+      --color-filter-border: var(--color-accent);
+      --color-filter-background: var(--text-color-light);
+      --box-shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.12);
+      --radius-pill: 8px;
+      --radius-input: 8px;
+      --padding-padding-unit: 4px;
+      --padding-horizontal-md: 12px;
    }
    ```
    Dazu globale Resets, Box-Sizing, Grundtypografie, `a`/`button`-Basisstile.
