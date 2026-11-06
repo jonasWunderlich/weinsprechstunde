@@ -1,6 +1,9 @@
 # Tasks: editor
 
-Stand: Implementierung abgeschlossen (Historie im Archiv). Offene, optionale Property-Tests (fast-check, `FileSystemAccessService` gemockt):
+Stand: Implementierung abgeschlossen (Historie im Archiv).
+- [x] Öffnen mit frischem Lesen, Cache-Update nach Speichern, Warteschlange und Flush (Req 17.6, 17.9a–c, 17.21a–b).
+
+Offene, optionale Property-Tests (fast-check, `FileSystemAccessService` gemockt):
 
 - [ ] 1. Property 17: Konflikt-Erkennung über `File.lastModified`. _Req 17.25_
 - [ ] 2. Property 27: Editor-Typkonvertierung beim Auto-Save. _Req 17.22_

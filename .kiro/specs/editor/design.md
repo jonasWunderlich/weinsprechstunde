@@ -63,6 +63,11 @@ Dynamisch aus `wine-schema.json` (neue Felder erscheinen ohne Code-Änderung).
 | schema-fremd | angezeigt und erhalten |
 
 Auto-Save: Debounce 500 ms pro Feld, Typkonvertierung, Konfliktschutz und Speicherstatus „Erfolg"/„Fehler" (Feldinhalte bleiben bei Fehler). Konflikt: Warnung, Überschreiben nur nach Bestätigung. Cloud-Sync-Konflikte löst die App nicht; die Prüfung über `File.lastModified` deckt nur lokale Änderung seit dem Laden ab.
+### Öffnen und Speichern (Req 17.6, 17.9a–c, 17.21a–b)
+- Öffnen: Der Lade-Effekt im WineEditor hängt am Pfad des Eintrags (nicht am Cache-Objekt) und läuft nur bei Pfadwechsel. Er zeigt den Cache-Stand schreibgeschützt (`aria-busy`), liest per `readJson` (`wine` + `lastModified`) und initialisiert danach den `EditorSaveService`. Ein Token (latest-wins) verwirft späte Antworten. Lesefehler (`NotFoundError`, defektes JSON) ⇒ Warnung statt Formular, Save-Service deaktiviert. Weicht der frische `lastModified` vom Cache ab, wird der Cache-Eintrag angeglichen.
+- Speichern: `EditorSaveService` führt Speichervorgänge je Eintrag über eine Promise-Kette seriell aus. Nach jedem Erfolg ruft er `onSaved(path, wine, lastModified)`; der WineEditor leitet das an `EditorStateService.applyEntryState` weiter. Dieses ersetzt das `WineEntry` und befüllt `wineData.wines` mit **demselben** Wine-Objekt (die Liste verbindet über Objektidentität). `lastModified` stammt immer aus dem Rückgabewert von `writeJson`.
+- Wechsel: `flush()` speichert wartende Eingaben sofort; bei Fehlschlag Hinweis `flush-notice` (Datei, Grund), die Auswahl bleibt gewechselt.
+- Der Aktualisieren-Button lädt den bereits geöffneten Eintrag nicht neu; erneutes Auswählen liest frisch.
 
 ## ImagePicker und Medien-Picker (Req 17.28–17.35)
 
@@ -116,6 +121,8 @@ Property 28 (Schema-fremde Felder bleiben erhalten, Roundtrip) ist im Vertrag ed
 | Schreibfehler Auto-Save | Status „Fehler", Feldinhalte bleiben |
 | `lastModified` abweichend | Konfliktwarnung, kein Schreiben ohne Bestätigung |
 | Defekte JSON | in Liste als fehlerhaft, nicht im WineEditor |
+| Datei beim Öffnen nicht lesbar (fehlt, JSON defekt) | Warnung statt Formular mit Verweis auf Aktualisieren, kein Speichern |
+| Sichern beim Eintragswechsel scheitert | schließbarer Hinweis mit Dateipfad, nichts überschrieben |
 | Archiv-Verschieben fehlgeschlagen | Datei bleibt am Ursprungsort, Fehleranzeige |
 | link-image/Verschieben fehlgeschlagen | keine doppelte JSON, Fehleranzeige |
 | Gleichzeitige Cloud-Sync-Bearbeitung | Sync-Konfliktkopien möglich, nicht Aufgabe der App |
@@ -123,7 +130,7 @@ Property 28 (Schema-fremde Felder bleiben erhalten, Roundtrip) ist im Vertrag ed
 ## Testing Strategy
 
 vitest + jsdom + fast-check (`ng test`), kein Backend-Teststack.
-- Unit: Freigabe/Handle-Persistenz (gemockt), Unsupported-Browser-Hinweis, keine Netzwerkanfragen/Weindaten, Auto-Refresh und Aktualisieren-Button ohne Polling, Layout/Auswahl, Standardsortierung, Eintragstyp-Filter inkl. Auto-Umschalten, Formular aus WineSchema, Chips (Array), Audio-/Video-Picker, Unvollständig-/Fehlerhaft-Markierung, schema-fremde Felder, Bild-Listing (`date`/`assigned`), ImagePicker (Standard, Umschalter, Datumssortierung, Namensfilter), Auto-Save (Debounce, Typkonvertierung, Status), Konfliktwarnung, Entwurf, Anlegen (a)/(b), Archivieren (kein Löschen), `_archive`-Ignorierung.
+- Unit: Freigabe/Handle-Persistenz (gemockt), Unsupported-Browser-Hinweis, keine Netzwerkanfragen/Weindaten, Auto-Refresh und Aktualisieren-Button ohne Polling, Layout/Auswahl, Standardsortierung, Eintragstyp-Filter inkl. Auto-Umschalten, Formular aus WineSchema, Chips (Array), Audio-/Video-Picker, Unvollständig-/Fehlerhaft-Markierung, schema-fremde Felder, Bild-Listing (`date`/`assigned`), ImagePicker (Standard, Umschalter, Datumssortierung, Namensfilter), Auto-Save (Debounce, Typkonvertierung, Status, Warteschlange, Flush), Öffnen mit frischem Lesen (read-only, latest-wins, Lesefehler-Warnung), Regression A→B→A mit simulierter Platte (gespeicherter Stand sichtbar, kein falscher Konflikt, echter externer Konflikt bleibt erkannt), Cache-Update nach Speichern (Objektidentität, Liste/Filter, Formular nicht zurückgesetzt), Konfliktwarnung, Entwurf, Anlegen (a)/(b), Archivieren (kein Löschen), `_archive`-Ignorierung.
 - Property: 17, 23–27 und 28 (aus editor-output).
 - Contract-Fixture: `frontend/projects/editor/src/app/models/contract-fixture.spec.ts` (`fixtures/import/`).
 - Filter-/Schema-Logik der geteilten Library wird in der Library getestet, nicht im Editor dupliziert.

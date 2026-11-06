@@ -32,12 +32,15 @@ Plattform und Ordner
 17.3 Erneutes Öffnen mit persistiertem Handle: kurze Re-Autorisierung statt erneuter Ordnersuche.
 17.4 Nur Chromium (Chrome/Edge); ohne File System Access API verständlicher Hinweis.
 17.5 Verteilung der Dateien allein per Cloud-Sync; der Editor löst keine Sync-Konflikte (gleichzeitiges Bearbeiten derselben Datei kann Sync-Konflikte erzeugen, außerhalb der Verantwortung der App).
-17.6 Nach eigener Aktion (Anlegen, Archivieren, Bild-Verknüpfen, Speichern) wird die Liste automatisch aktualisiert.
+17.6 Nach eigener Aktion wird die Liste automatisch aktualisiert: Anlegen, Archivieren und Bild-Verknüpfen per erneutem Scan; jedes erfolgreiche Speichern (Auto-Save und Überschreiben) ersetzt den Cache-Eintrag durch den gespeicherten Stand (neuer `lastModified` aus dem Schreibvorgang), ohne Scan und ohne das Formular zurückzusetzen. Name, Sortierung, Filter und Autocomplete sind danach aktuell.
 17.7 Für Änderungen anderer Beteiligter ein manueller Aktualisieren-Button; kein automatisches Polling.
 
 Layout und Liste
 17.8 Zwei-Spalten-Layout: Eintragsliste links, WineEditor rechts.
 17.9 Auswahl eines Eintrags zeigt dessen Details im WineEditor.
+17.9a Bei Auswahl eines angelegten Eintrags zeigt das Formular zunächst den Cache-Stand schreibgeschützt (`readonly`, `aria-busy`, nicht ausgeblendet), liest die Datei frisch von der Platte und ersetzt dann das Formular durch den frischen Stand. Dessen `lastModified` ist die Konfliktbasis des Auto-Saves; danach ist das Formular bearbeitbar. Bei schnellem Weiterklicken (Pfeiltasten, Klicks) gilt nur die jüngste Auswahl, späte Antworten früherer Auswahlen werden verworfen.
+17.9b Ist die Datei beim Lesen nicht mehr vorhanden oder das JSON defekt, ersetzt eine Warnung (`role="alert"`, Verweis auf den Aktualisieren-Button, Req 17.7) das Formular; Speichern ist nicht möglich.
+17.9c Entwürfe (Bild ohne JSON) werden nicht gelesen.
 17.10 Liste mit denselben attributbasierten Filter-/Such-/Sortiermöglichkeiten wie die öffentliche Weinliste (WineSchema, FilterService/ControlsRow) plus Eintragstyp-Filter; unterscheidet angelegte und unbekannte Weine.
 17.11 Filter-, Such-, Sortierlogik und WineSchema-Verarbeitung aus dem geteilten Bereich (`@weinsprechstunde/shared`), nicht dupliziert.
 17.12 Standardsortierung absteigend nach `tasting_date`; angelegte und unbekannte Weine gemischt nach Datum; ohne ermittelbares Datum ans Ende; weitere Optionen wie in der Weinliste (geteilter FilterService).
@@ -54,6 +57,8 @@ Formular
 
 Auto-Save
 17.21 Schreiben in die JSON ohne manuelle Aktion, frühestens 500 ms nach der letzten Eingabe im Feld (Debounce 500 ms pro Feld).
+17.21a Speichervorgänge eines Eintrags laufen nacheinander; jeder baut auf Objekt und Zeitstempel des vorherigen auf, sodass bei fast gleichzeitigen Änderungen mehrerer Felder keine Änderung verloren geht.
+17.21b Beim Wechsel des Eintrags (und vor dem Archivieren) werden noch im Debounce wartende Eingaben sofort gespeichert statt verworfen. Scheitert das (Konflikt, Fehler), erscheint ein schließbarer Hinweis (`role="alert"`) mit dem Dateipfad; es wird nichts überschrieben.
 17.22 `number`-Felder typrichtig als JSON-Zahl (`year` Ganzzahl, `price` 2, `rating` 1 Nachkommastelle), Dezimal-Komma akzeptiert (`"6,99"` → `6.99`), konsistent zur Normalisierung der Pipeline.
 17.23 Erfolgreicher Auto-Save → Speicherstatus-Indikator „Erfolg".
 17.24 Fehlgeschlagener Auto-Save → Indikator „Fehler" mit erkennbarer Fehleranzeige; zuletzt eingegebene Feldinhalte bleiben erhalten.

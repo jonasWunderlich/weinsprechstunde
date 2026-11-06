@@ -230,9 +230,10 @@ export class FileSystemAccessService {
    */
   async scan(): Promise<ScanResult> {
     const dir = this.requireDirectory();
-    // Nach jeder Änderung (Anlegen/Verschieben/Archivieren/Speichern) löst der
-    // EditorStateService einen erneuten scan() aus. Den Thumbnail-Cache hier leeren,
-    // damit neu zugewiesene oder verschobene Bilder frische Vorschauen erhalten.
+    // Nach Anlegen/Verschieben/Archivieren löst der EditorStateService einen erneuten
+    // scan() aus (Speichern nicht: dort wird der Cache-Eintrag direkt ersetzt). Den
+    // Thumbnail-Cache hier leeren, damit neu zugewiesene oder verschobene Bilder frische
+    // Vorschauen erhalten.
     this.clearThumbnailCache();
     const entries: WineEntry[] = [];
     const rawImages: Array<{
