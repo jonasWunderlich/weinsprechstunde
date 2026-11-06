@@ -50,9 +50,17 @@ def phase_backup(config: Config) -> None:
     last_archival_path = backup_dir / LAST_ARCHIVAL_FILE
     archival_due = True
     if last_archival_path.exists():
-        last_ts = datetime.fromisoformat(last_archival_path.read_text().strip())
-        if datetime.now() - last_ts < timedelta(days=config.backup.archival_interval_days):
-            archival_due = False
+        try:
+            last_ts = datetime.fromisoformat(last_archival_path.read_text().strip())
+        except ValueError:
+            # Leerer/beschädigter Marker (Req 20.9: nur Warnung, kein Abbruch):
+            # wie "noch nie archiviert" behandeln, Marker wird neu geschrieben.
+            sys.stderr.write(
+                f"WARNUNG: Marker {last_archival_path} ungültig – Archival-Backup wird fällig.\n"
+            )
+        else:
+            if datetime.now() - last_ts < timedelta(days=config.backup.archival_interval_days):
+                archival_due = False
 
     archival_name: Optional[str] = None
     if archival_due:

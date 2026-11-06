@@ -242,3 +242,22 @@ def test_remote_backup_skipped_without_password(tmp_path, monkeypatch, capsys):
     # Lokales Backup bleibt dennoch bestehen
     backup_dir = tmp_path / "backup"
     assert any(f.name.startswith("last_") for f in backup_dir.iterdir())
+
+
+@pytest.mark.parametrize("content", ["", "kein-datum"])
+def test_invalid_archival_marker_makes_archival_due(tmp_path, monkeypatch, capsys, content):
+    """Leerer/beschädigter .last_archival-Marker: Warnung, Archival fällig, kein Crash (Req 20.9)."""
+    export_path = setup_export(tmp_path)
+    backup = make_backup_config(wi, tmp_path, archival_interval_days=30)
+    config = make_config(export_path=str(export_path), backup=backup)
+    backup_dir = tmp_path / "backup"
+    backup_dir.mkdir()
+    (backup_dir / wi.LAST_ARCHIVAL_FILE).write_text(content, encoding="utf-8")
+
+    run_backup_at(monkeypatch, config, datetime(2024, 1, 1, 12, 0, 0))
+
+    assert "ungültig" in capsys.readouterr().err
+    assert count_prefix(backup_dir, "last_") == 1
+    assert count_prefix(backup_dir, "archival_") == 1
+    # Marker ist danach wieder gültig
+    datetime.fromisoformat((backup_dir / wi.LAST_ARCHIVAL_FILE).read_text())
