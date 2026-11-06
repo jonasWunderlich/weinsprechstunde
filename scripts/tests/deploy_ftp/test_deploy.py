@@ -500,6 +500,47 @@ def test_prune_mlsd_deletes_stale_nested_dist_file(tmp_path, monkeypatch):
     assert f"{base}/assets/old-chunk.js" in fake.deleted
 
 
+def test_prune_deletes_only_stale_js_and_css(tmp_path, monkeypatch):
+    """Req 6.5: Der Prune löscht nur veraltete .js/.css-Dateien. Alles andere im
+    Web-Root (Backups, .htaccess, alte HTML-/Bilddateien) bleibt unberührt."""
+    monkeypatch.chdir(tmp_path)
+    _make_dist(tmp_path)
+
+    config = make_config(password="geheim", protocol="ftpes")
+    base = config.deploy.remote_path
+
+    mlsd_listing = {
+        base: [
+            ("index.html", {"type": "file"}),
+            ("main-OLD.js", {"type": "file"}),
+            ("styles-OLD.css", {"type": "file"}),
+            ("STYLES-UPPER.CSS", {"type": "file"}),
+            ("old-page.html", {"type": "file"}),
+            ("logo.png", {"type": "file"}),
+            (".htaccess", {"type": "file"}),
+            ("backup", {"type": "dir"}),
+        ],
+        f"{base}/backup": [
+            ("last_2026-11-06.json", {"type": "file"}),
+            ("restore.js", {"type": "file"}),
+        ],
+    }
+    fake = MlsdFakeFTP(mlsd_listing=mlsd_listing)
+    _patch_ftp(monkeypatch, fake)
+
+    wi.phase_deploy(config)
+
+    root = base.rstrip("/")
+    assert f"{root}/main-OLD.js" in fake.deleted
+    assert f"{root}/styles-OLD.css" in fake.deleted
+    assert f"{root}/STYLES-UPPER.CSS" in fake.deleted
+    # Nicht-JS/CSS bleibt, auch wenn lokal nicht vorhanden.
+    for kept in ("old-page.html", "logo.png", ".htaccess", "backup/last_2026-11-06.json"):
+        assert f"{root}/{kept}" not in fake.deleted
+    # Es werden ausschließlich .js/.css gelöscht.
+    assert all(p.lower().endswith((".js", ".css")) for p in fake.deleted)
+
+
 # --- --force-images: alle Bilder neu hochladen ------------------------------
 
 

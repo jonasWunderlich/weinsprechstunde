@@ -1,9 +1,10 @@
 # Vertrag: deploy-input
 
-- Version: 1.1.0
+- Version: 1.2.0
 - Produzent (Eigentümer): deploy-ftp (definiert Erwartung); befüllt von pipeline (`export/`) und build (`frontend/dist/`)
 - Konsumenten: deploy-ftp (Phase `deploy`)
 - Changelog:
+  - 1.2.0 (2026-11-07): Prune löscht ausschließlich veraltete `.js`- und `.css`-Dateien (alle anderen Dateien bleiben unberührt, auch bei `remote_path` = Web-Root `/`). Schutzliste bleibt (Teilbäume werden nicht betreten). Verschärfung, rückwärtskompatibel.
   - 1.1.0 (2026-11-07): Audio/Video als lokale Eingaben (`audio_export_dir`, `video_export_dir`), neue Remote-Schlüssel `remote_audio_path`/`remote_video_path`, Prune-Schutz und Reihenfolge ergänzt. Rückwärtskompatibel (Defaults).
   - 1.0.0 (2026-11-06): Erstfassung aus Ist-Zustand.
 
@@ -41,7 +42,8 @@ Auflösung Weinliste-Dist (`_resolve_dist_dir`): `frontend/dist` mit eigener `in
 ## Invarianten
 
 - Upload nur bei Remote älter als lokal (MDTM-Vergleich); `--force-images` lädt alle Bilder sowie Audio und Video.
-- Prune unter `remote_path` löscht nie: `wines.json`-Basename, `remote_images_path`, `remote_audio_path`, `remote_video_path`, `remote_import_path`, `remote_editor_path`.
+- Prune löscht nur Dateien mit Endung `.js` oder `.css` (case-insensitive), die lokal nicht mehr im Build liegen. Alle anderen Dateien (z. B. `.htaccess`, `backup/`, HTML, Bilder) bleiben unberührt, auch bei `remote_path` = `/`.
+- Prune unter `remote_path` betritt und löscht nie: `wines.json`-Basename, `remote_images_path`, `remote_audio_path`, `remote_video_path`, `remote_import_path`, `remote_editor_path`.
 - Editor-Prune ausschließlich unterhalb `remote_editor_path`.
 - `wines.json`, `wine-schema.json`, Bilder, Audio, Video werden nie gelöscht.
 - Kein automatisches Backup beim Deploy.

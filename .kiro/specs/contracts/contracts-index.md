@@ -6,7 +6,7 @@
 | [editor-output](editor-output.md) | 1.0.0 | editor | pipeline |
 | [export-format](export-format.md) | 1.1.0 | pipeline | weinliste, deploy-ftp |
 | [shared-api](shared-api.md) | 1.0.0 | shared | editor, weinliste |
-| [deploy-input](deploy-input.md) | 1.1.0 | deploy-ftp | deploy-ftp (Erwartung an pipeline/build) |
+| [deploy-input](deploy-input.md) | 1.2.0 | deploy-ftp | deploy-ftp (Erwartung an pipeline/build) |
 | [build-output](build-output.md) | 1.0.0 | editor, weinliste | deploy-ftp |
 
 ## Verträge je Domäne

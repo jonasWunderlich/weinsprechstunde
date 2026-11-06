@@ -29,7 +29,7 @@ Verträge:
 6.2 Überträgt Angular Build-Output, `wines.json` und alle Dateien aus `image_export_dir`, `audio_export_dir` und `video_export_dir` auf den Webserver.
 6.3 Transport per FTPES (`deploy.protocol = "ftpes"`). Zertifikatsprüfung standardmäßig aus (Webspace-Zertifikat mit abweichendem Hostnamen), Verbindung bleibt TLS-verschlüsselt; `FTPS_VERIFY=1` aktiviert die reguläre Prüfung.
 6.4 Lokale Datei nicht neuer als die Serverdatei → nicht erneut übertragen.
-6.5 Datei im Build-Output lokal nicht mehr vorhanden, aber unter `deploy.remote_path` auf dem Server → auf dem Server löschen (Prune).
+6.5 Datei im Build-Output lokal nicht mehr vorhanden, aber unter `deploy.remote_path` auf dem Server → nur wenn sie die Endung `.js` oder `.css` hat, auf dem Server löschen (Prune). Alle anderen Dateien bleiben unberührt.
 6.6 `wines.json`, `wine-schema.json`, Bilder, Audio und Video werden auf dem Server nie gelöscht.
 6.7 Build-Artefakte unter `deploy.remote_path`.
 6.8 Bilder unter `deploy.remote_images_path` (`/wine_app/images`).
@@ -40,7 +40,7 @@ Verträge:
 6.12 Verbindungsfehler → Abbruch mit: „FEHLER: Verbindung zum Server [host] fehlgeschlagen. Server-Meldung: [Originalmeldung]. Bitte prüfe: (1) Ist der Hostname '[host]' korrekt? (2) Sind Benutzername und Passwort gültig? (3) Ist der Server erreichbar und das Protokoll ([protocol]) korrekt?" Deploy stoppt.
 6.13 Zugangsdaten ausschließlich über Umgebungsvariablen/Secrets-Datei, nie im Klartext in Config oder Versionskontrolle.
 6.14 Deploy-Wurzel des Build-Outputs ist das tatsächliche Browser-Build-Verzeichnis (`frontend/dist/<projekt>/browser/` bei `@angular/build:application`; flacher `frontend/dist/` mit `index.html` unverändert), sodass `index.html` und Build-Dateien direkt unter `deploy.remote_path` liegen.
-6.15 Kein automatisches Pre-Deploy-Backup; Inhalt von `remote_path` wird überschrieben. Prune löscht nur unterhalb von `remote_path`, lässt den Web-Root (inkl. Root-`.htaccess`) unberührt; `remote_images_path`, `remote_import_path` und `wines.json` sind gemäß 6.6 ausgenommen.
+6.15 Kein automatisches Pre-Deploy-Backup; Inhalt von `remote_path` wird überschrieben. Prune löscht nur veraltete `.js`/`.css` unterhalb von `remote_path` und lässt alles andere (inkl. Root-`.htaccess` und Server-Backups, auch bei `remote_path` = `/`) unberührt; `remote_images_path`, `remote_import_path` und `wines.json` sind gemäß 6.6 ausgenommen.
 6.16 Prune betritt geschützte Teilbäume (`images/`, `audio/`, `video/`, `data/`) gar nicht: kein Listing, keine Typprüfung (`_ftp_is_dir`), kein Löschen (Schutz und Performance, behebt die frühere Deploy-Blockade).
 6.17 Verzeichnislistings (Prune, Remote-Download) primär per MLSD (`ftp.mlsd()`, RFC 3659, ein Roundtrip je Verzeichnis); Fallback bei Nichtunterstützung oder Fehler: `nlst` + `_ftp_is_dir`.
 6.18 CLI-Parameter `--force-images` lädt ALLE Bilder, Audio- und Video-Dateien neu hoch (kein MDTM-Vergleich); ohne Flag nur neuere/fehlende. Durchreichbar als `make deploy FORCE_IMAGES=1`.

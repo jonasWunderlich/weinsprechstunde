@@ -146,6 +146,10 @@ def _local_dist_files(dist_dir: Path) -> dict[str, Path]:
     return result
 
 
+# Nur Dateien mit diesen Endungen darf der Prune auf dem Server löschen.
+PRUNABLE_EXTENSIONS = (".js", ".css")
+
+
 def _protected_prefixes(config: Config) -> tuple[set[str], list[str]]:
     """Pfade, die der Prune unter remote_path NIE löschen darf.
 
@@ -320,10 +324,17 @@ def _ftp_up_to_date(ftp: "ftplib.FTP", remote_file: str, local_file: Path) -> bo
 def _ftp_prune(ftp: "ftplib.FTP", remote_base: str, keep: set[str],
                protected_exact: Optional[set[str]] = None,
                protected_prefixes: Optional[list[str]] = None) -> None:
-    """Dateien im remote dist-Ordner löschen, die lokal nicht mehr existieren.
+    """Veraltete ``.js``- und ``.css``-Dateien im remote dist-Ordner löschen.
 
-    ``protected_exact``/``protected_prefixes`` schützen wines.json und den
-    Bilderordner, falls diese unter remote_base liegen (Req 6.6).
+    Gelöscht werden ausschließlich Dateien mit den Endungen aus
+    ``PRUNABLE_EXTENSIONS`` (gehashte Build-Artefakte), die lokal nicht mehr
+    existieren. Alle anderen Dateien (z. B. ``.htaccess``, Server-Backups,
+    ``index.html``) bleiben unberührt, damit ``remote_path = "/"`` (Web-Root)
+    sicher ist (Req 6.5, 6.15).
+
+    ``protected_exact``/``protected_prefixes`` schützen zusätzlich wines.json
+    und die Daten-/Medienordner, falls diese unter remote_base liegen (Req 6.6);
+    geschützte Teilbäume werden nicht einmal betreten.
     """
     exact = protected_exact or set()
     prefixes = protected_prefixes or []
@@ -344,7 +355,11 @@ def _ftp_prune(ftp: "ftplib.FTP", remote_base: str, keep: set[str],
                 if _is_protected(f"{rel}/", exact, prefixes):
                     continue
                 walk(remote_entry, f"{rel}/")
-            elif rel not in keep and not _is_protected(rel, exact, prefixes):
+            elif (
+                rel not in keep
+                and base.lower().endswith(PRUNABLE_EXTENSIONS)
+                and not _is_protected(rel, exact, prefixes)
+            ):
                 try:
                     ftp.delete(remote_entry)
                 except ftplib.error_perm:
