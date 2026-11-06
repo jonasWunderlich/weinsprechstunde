@@ -400,4 +400,65 @@ describe('WineEditor: frisch laden und Cache nach dem Speichern aktualisieren', 
       expect(c.wineData.wines().includes(entry.wine as Wine)).toBe(true);
     });
   });
+
+  describe('Warteschlange und Sichern beim Wechsel', () => {
+    it('speichert zwei fast gleichzeitige Feldänderungen ohne Verlust und ohne Konflikt', async () => {
+      const c = await setup(files());
+      c.select('a.json');
+      await c.settle();
+      c.type('price', '9.5');
+      await c.settle(10);
+      c.type('year', '2019');
+      await c.settle(600);
+
+      const onDisk = c.disk.wineOnDisk('a.json');
+      expect(onDisk.price).toBe(9.5);
+      expect(onDisk.year).toBe(2019);
+      expect(conflictBanner(c.el)).toBeNull();
+      expect(c.state.entries().find((e) => e.path === 'a.json')?.lastModified).toBe(
+        c.disk.mtime('a.json'),
+      );
+    });
+
+    it('sichert eine laufende Eingabe beim Wechsel des Weins statt sie zu verwerfen', async () => {
+      const c = await setup(files());
+      c.select('a.json');
+      await c.settle();
+      c.type('price', '9.5'); // Debounce läuft noch
+      c.select('b.json');
+      await c.settle();
+
+      expect(c.disk.wineOnDisk('a.json').price).toBe(9.5);
+      expect(c.el.querySelector('[data-testid="flush-notice"]')).toBeNull();
+      // Cache ist aktuell; Wiederöffnen zeigt den gesicherten Stand ohne Konflikt.
+      c.select('a.json');
+      await c.settle();
+      expect(c.input('price').value).toBe('9.5');
+      c.type('year', '2019');
+      await c.settle(500);
+      expect(conflictBanner(c.el)).toBeNull();
+    });
+
+    it('zeigt einen Hinweis, wenn das Sichern beim Wechsel scheitert (Konflikt), ohne zu überschreiben', async () => {
+      const c = await setup(files());
+      c.select('a.json');
+      await c.settle();
+      c.disk.externalChange('a.json', { name: 'Alpha extern' });
+      c.type('price', '9.5');
+      c.select('b.json');
+      await c.settle();
+
+      expect(c.state.selectedId()).toBe('b.json');
+      const notice = c.el.querySelector('[data-testid="flush-notice"]');
+      expect(notice?.getAttribute('role')).toBe('alert');
+      expect(notice?.textContent).toContain('a.json');
+      expect(c.disk.wineOnDisk('a.json').name).toBe('Alpha extern');
+      expect(c.disk.wineOnDisk('a.json').price).toBeUndefined();
+
+      (c.el.querySelector('[data-testid="flush-notice-dismiss"]') as HTMLButtonElement).click();
+      c.fixture.detectChanges();
+      expect(c.el.querySelector('[data-testid="flush-notice"]')).toBeNull();
+    });
+  });
 });
+

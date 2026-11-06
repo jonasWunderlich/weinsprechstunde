@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   computed,
   effect,
   inject,
@@ -10,7 +11,7 @@ import {
 import { Wine, WineSchemaField, distinctValuesForField, isPresent } from '@weinsprechstunde/shared';
 import { EditorStateService } from '../../services/editor-state.service';
 import { EditorWineDataService } from '../../services/editor-wine-data.service';
-import { EditorSaveService } from '../../services/editor-save.service';
+import { EditorSaveService, SaveFailure } from '../../services/editor-save.service';
 import {
   FileSystemAccessService,
   MediaEntry,
@@ -74,6 +75,7 @@ export class WineEditorComponent {
   private readonly wineData = inject(EditorWineDataService);
   private readonly save = inject(EditorSaveService);
   private readonly fsa = inject(FileSystemAccessService);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly isPresent = isPresent;
 
@@ -101,6 +103,16 @@ export class WineEditorComponent {
 
   /** Lesefehler (Datei fehlt, JSON defekt): ersetzt das Formular durch eine Warnung. */
   readonly loadError = signal<string | null>(null);
+
+  /**
+   * Hinweis, wenn beim Wechsel des Eintrags ausstehende Eingaben nicht gespeichert werden
+   * konnten (Konflikt/Fehler). Die Auswahl ist dann schon gewechselt; der Hinweis nennt
+   * die betroffene Datei, damit die Änderung dort wiederholt werden kann.
+   */
+  readonly flushNotice = signal<string | null>(null);
+
+  /** Ende der zuletzt gestarteten Sicherung ausstehender Eingaben (vor dem Lesen abwarten). */
+  private pendingFlush: Promise<void> = Promise.resolve();
 
   /** Zähler der Öffnungsvorgänge: nur die jüngste Antwort gilt (latest-wins). */
   private loadToken = 0;
@@ -173,6 +185,7 @@ export class WineEditorComponent {
     // Erfolgreiche Speichervorgänge halten den Scan-Cache aktuell (Req 17.6).
     this.save.onSaved = (path, wine, lastModified) =>
       this.state.applyEntryState(path, wine, lastModified);
+    this.destroyRef.onDestroy(() => void this.flushPending());
 
     // Bei jedem Wechsel des geöffneten Eintrags (nur bei Pfadwechsel, nicht bei
     // Cache-Updates): zuerst den Cache-Stand read-only zeigen, dann frisch von der Platte
@@ -203,8 +216,26 @@ export class WineEditorComponent {
 
   // ── Laden und Formular-Aufbau ───────────────────────────────────────────────
 
+  /**
+   * Sichert ausstehende Eingaben des bisher gebundenen Eintrags (statt sie zu verwerfen).
+   * Schlägt das fehl, bleibt ein Hinweis stehen ({@link flushNotice}).
+   */
+  private flushPending(): Promise<void> {
+    const run = this.save.flush().then((failure) => {
+      if (failure) this.flushNotice.set(flushMessage(failure));
+    });
+    this.pendingFlush = this.pendingFlush.then(() => run);
+    return run;
+  }
+
+  /** Schließt den Hinweis auf nicht gesicherte Änderungen. */
+  dismissFlushNotice(): void {
+    this.flushNotice.set(null);
+  }
+
   /** Löst die Bindung an einen angelegten Eintrag (Entwurf oder keine Auswahl). */
   private releaseEntry(): void {
+    void this.flushPending();
     this.loadToken++;
     this.save.deactivate();
     this.loading.set(false);
@@ -220,6 +251,7 @@ export class WineEditorComponent {
   private openEntry(path: string, schema: WineSchemaField[]): void {
     const token = ++this.loadToken;
     const item = this.created();
+    void this.flushPending();
     this.save.deactivate();
     this.loadError.set(null);
     this.loading.set(true);
@@ -234,6 +266,10 @@ export class WineEditorComponent {
     cachedLastModified: number | null,
   ): Promise<void> {
     try {
+      // Eine laufende Sicherung des vorherigen Eintrags (ggf. derselben Datei) abwarten,
+      // damit das Lesen deren Ergebnis sieht.
+      await this.pendingFlush;
+      if (token !== this.loadToken) return;
       const fresh = await this.fsa.readJson(path);
       if (token !== this.loadToken) return;
       if (!fresh.wine || typeof fresh.wine !== 'object' || Array.isArray(fresh.wine)) {
@@ -611,6 +647,8 @@ export class WineEditorComponent {
   async archiveEntry(): Promise<void> {
     const item = this.created();
     if (!item) return;
+    // Ausstehende Eingaben zuerst sichern, damit sie nicht auf einen verschobenen Pfad zielen.
+    await this.flushPending();
     await this.state.archiveEntry(item.entry);
   }
 
@@ -631,4 +669,13 @@ function describeLoadError(err: unknown): string {
   if (name === 'NotFoundError') return 'Die Datei wurde nicht gefunden (verschoben, umbenannt oder entfernt).';
   if (err instanceof SyntaxError) return 'Die Datei enthält kein gültiges JSON.';
   return 'Die Datei konnte nicht gelesen werden.';
+}
+
+/** Hinweistext, wenn ausstehende Eingaben beim Wechsel nicht gespeichert werden konnten. */
+function flushMessage(failure: SaveFailure): string {
+  const reason =
+    failure.status === 'conflict'
+      ? 'Die Datei wurde extern verändert.'
+      : `Fehler beim Speichern: ${failure.error ?? 'unbekannt'}.`;
+  return `Änderungen an „${failure.path}“ wurden beim Wechsel nicht gespeichert. ${reason} Bitte den Eintrag erneut öffnen und die Änderung wiederholen.`;
 }

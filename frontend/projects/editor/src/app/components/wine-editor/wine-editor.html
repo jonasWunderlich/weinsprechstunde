@@ -1,6 +1,18 @@
 @let item = state.selectedItem();
 
 <div class="wine-editor">
+  @if (flushNotice(); as notice) {
+    <div
+      class="wine-editor__status wine-editor__status--error"
+      role="alert"
+      data-testid="flush-notice"
+    >
+      {{ notice }}
+      <button type="button" (click)="dismissFlushNotice()" data-testid="flush-notice-dismiss">
+        Schließen
+      </button>
+    </div>
+  }
   @if (!item) {
     <p class="wine-editor__empty">Wähle links einen Eintrag aus, um ihn hier zu bearbeiten.</p>
   } @else if (item.kind === 'created' && item.broken) {

@@ -69,6 +69,14 @@ class FakeFsa {
   }
 }
 
+/** Wartet, bis das frische Lesen beim Öffnen abgeschlossen ist (Formular nicht mehr read-only). */
+async function loaded(fixture: ReturnType<typeof TestBed.createComponent<WineEditorComponent>>): Promise<void> {
+  for (let i = 0; i < 5 && fixture.componentInstance.loading(); i++) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    fixture.detectChanges();
+  }
+}
+
 async function render(
   entries: WineEntry[],
   images: ImageEntry[] = [],
@@ -184,8 +192,7 @@ describe('WineEditorComponent', () => {
       state.select(state.listItems()[0]);
       fixture.detectChanges();
       // Frisches Lesen abwarten: bis dahin ist das Formular read-only.
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      fixture.detectChanges();
+      await loaded(fixture);
       const el = fixture.nativeElement as HTMLElement;
       // Vor dem Klick: kein Dialog.
       expect(el.querySelector('[data-testid="image-dialog-title"]')).toBeNull();
@@ -207,7 +214,7 @@ describe('WineEditorComponent', () => {
       const { fixture, state, fsa } = await render(entries, images);
       state.select(state.listItems().find((i) => i.kind === 'created') ?? null);
       fixture.detectChanges();
-      await fixture.whenStable();
+      await loaded(fixture);
       fixture.detectChanges();
 
       fixture.componentInstance.openImagePicker();
@@ -253,7 +260,7 @@ describe('WineEditorComponent', () => {
     state.select(created ?? null);
     // Change Detection zweimal, damit der Lade-Effect (save.init) garantiert läuft.
     fixture.detectChanges();
-    await fixture.whenStable();
+    await loaded(fixture);
     fixture.detectChanges();
 
     fixture.componentInstance.pickImage('wein.jpg');
@@ -503,7 +510,7 @@ describe('WineEditorComponent', () => {
       const { fixture, state } = await render(entries, images);
       state.select(state.listItems().find((i) => i.kind === 'created') ?? null);
       fixture.detectChanges();
-      await fixture.whenStable();
+      await loaded(fixture);
       fixture.detectChanges();
       expect(fixture.componentInstance.previewPath()).toBeNull();
 
