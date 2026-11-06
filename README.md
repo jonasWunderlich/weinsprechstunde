@@ -2,7 +2,7 @@
 
 Monorepo für die Weinsprechstunde:
 
-- `scripts/weinimport.py` — Python-CLI (Import-/Export-/Image-/Deploy-Phasen)
+- `scripts/weinimport.py` — Python-CLI (Import-/Export-/Image-/Deploy-Phasen); Einstieg, Logik in `scripts/weinlib/`
 - `frontend/` — Angular-SPA
 - `.kiro/specs/weinliste/` — Spezifikation (requirements.md, design.md)
 

@@ -1,6 +1,6 @@
 # Requirements: deploy-ftp (Build-Orchestrierung, FTPES-Deploy, CI)
 
-Domäne: Phase `deploy` im Skript `scripts/weinimport.py`, `Makefile`, `.github/workflows/deploy.yml`. Deploy-Phase baut nichts; sie erwartet fertige Artefakte.
+Domäne: Phase `deploy` in `scripts/weinlib/{config,ftp_transport,deploy}.py` (Einstieg/Fassade: `scripts/weinimport.py`), `Makefile`, `.github/workflows/deploy.yml`. Deploy-Phase baut nichts; sie erwartet fertige Artefakte.
 
 Verträge:
 - #[[file:.kiro/specs/contracts/deploy-input.md]] (lokale Eingaben, Remote-Pfade, Invarianten)

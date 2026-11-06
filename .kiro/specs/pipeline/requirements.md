@@ -1,6 +1,6 @@
 # Requirements: pipeline (Import-Skript, Aufbereitung, Export, Backup)
 
-Domäne: `scripts/weinimport.py` (Phasen `backup`, `prepare`, `export`, `image-export`). Eigenständiges Python-CLI, unabhängig vom Angular-Build.
+Domäne: `scripts/weinlib/{config,pipeline,backup}.py` (Einstieg/Fassade: `scripts/weinimport.py`; Phasen `backup`, `prepare`, `export`, `image-export`). Eigenständiges Python-CLI, unabhängig vom Angular-Build.
 
 Verträge:
 - #[[file:.kiro/specs/contracts/import-format.md]] (Eingabe, inkl. Schema-Regeln Req 18)

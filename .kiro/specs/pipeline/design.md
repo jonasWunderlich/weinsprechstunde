@@ -1,6 +1,6 @@
 # Design: pipeline
 
-Python-CLI `scripts/weinimport.py` (Abhängigkeiten: `scripts/requirements.txt`). Phasen `backup`, `prepare`, `export`, `image-export`.
+Python-CLI `scripts/weinimport.py` (Einstieg/Fassade; Logik in `scripts/weinlib/{config,pipeline,backup}.py`; Abhängigkeiten: `scripts/requirements.txt`). Phasen `backup`, `prepare`, `export`, `image-export`.
 
 Verträge:
 - #[[file:.kiro/specs/contracts/import-format.md]]

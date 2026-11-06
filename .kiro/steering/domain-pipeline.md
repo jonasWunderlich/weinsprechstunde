@@ -1,11 +1,11 @@
 ---
 name: domain-pipeline
-description: Import-zu-Export-Pipeline (import/ -> export/, scripts/weinimport.py Phasen optimize-images, prepare, export, image-export, wine-schema.json). Laden bei Arbeit an Aufbereitung, wines.json-Erzeugung, Bildexport oder Pipeline-Specs.
+description: Import-zu-Export-Pipeline (import/ -> export/, scripts/weinlib/{config,pipeline,backup}.py, Phasen backup, optimize-images, prepare, export, image-export, wine-schema.json). Laden bei Arbeit an Aufbereitung, wines.json-Erzeugung, Bildexport oder Pipeline-Specs.
 inclusion: auto
 ---
 # Domäne pipeline
 
-Scope: `import/`, `export/`, `scripts/weinimport.py` (Phasen optimize-images, prepare, export, image-export; nicht deploy), `wine-schema.json`, Tests in `scripts/tests/`. Nicht lesen: editor, weinliste, shared, deploy-ftp.
+Scope: `import/`, `export/`, `scripts/weinlib/{config,pipeline,backup}.py` (Phasen backup, optimize-images, prepare, export, image-export; nicht deploy; `scripts/weinimport.py` ist nur die Fassade/Einstieg), `backup/`, `wine-schema.json`, Tests in `scripts/tests/`. Backup gehört zur Pipeline: läuft immer vor dem JSON-Export und sichert die bisherige `wines.json` (Req 20). Nicht lesen: editor, weinliste, shared, deploy-ftp (auch nicht `deploy.py`, `ftp_transport.py`, `cli.py`).
 
 ## Verträge
 - #[[file:.kiro/specs/contracts/import-format.md]]
