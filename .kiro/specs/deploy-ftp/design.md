@@ -56,4 +56,4 @@ Trigger: Push auf `main`. Job `deploy` (ubuntu-latest): `actions/checkout@v4`, `
 
 ## Testing Strategy
 
-pytest, Fake-FTP: Timestamp-Vergleich, selektives Löschen, geschützte Präfixe (Prune betritt sie nicht), MLSD-Fallback, `--force-images`, Passwort-Fallback, Dist-Auflösung (`_resolve_dist_dir`).
+pytest in `scripts/tests/deploy_ftp/` (`make test-deploy`), Fake-FTP: Timestamp-Vergleich, selektives Löschen, geschützte Präfixe (Prune betritt sie nicht), MLSD-Fallback, `--force-images`, Passwort-Fallback, Dist-Auflösung (`_resolve_dist_dir`).

@@ -12,6 +12,13 @@ FTPES ausschließlich nach `/wine_app` (Build-Output, `data/` mit
 `wines.json`/`wine-schema.json`, `images/`). Ein Root-`.htaccess` mappt alle
 Requests transparent nach `/wine_app/` um, sodass die sichtbare URL `/` bleibt.
 
+## Tests
+Python-Tests (pytest, hypothesis) liegen in `scripts/tests/`, getrennt nach Domäne:
+- `make test` — alle Tests
+- `make test-pipeline` — `scripts/tests/pipeline` (inkl. Backup)
+- `make test-deploy` — `scripts/tests/deploy_ftp`
+- `make test-config` — `scripts/tests/config`
+
 ## Deploy / .htaccess
 
 Der transparente Rewrite liegt versioniert in

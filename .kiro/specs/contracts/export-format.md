@@ -36,5 +36,5 @@ Remote-Auslieferung (Web-Root): `data/wines.json`, `data/wine-schema.json`, `/im
 ## Golden Fixture
 
 - [`fixtures/export/wines.json`](fixtures/export/wines.json) (Ergebnis von prepare + export auf `fixtures/import/`).
-- Test pipeline: `scripts/tests/test_contract_fixtures.py`.
+- Test pipeline: `scripts/tests/pipeline/test_contract_fixtures.py`.
 - Test weinliste: `frontend/projects/weinliste/src/app/services/contract-fixture.spec.ts`.

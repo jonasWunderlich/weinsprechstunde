@@ -28,6 +28,6 @@ Maßgeblich für Datenstruktur: `wine-schema.json` (Repo-Root). Verträge verlin
 ## Golden Fixtures
 
 - `fixtures/import/` → prepare + export → `fixtures/export/wines.json`.
-- pipeline: `scripts/tests/test_contract_fixtures.py`
+- pipeline: `scripts/tests/pipeline/test_contract_fixtures.py`
 - editor: `frontend/projects/editor/src/app/models/contract-fixture.spec.ts`
 - weinliste: `frontend/projects/weinliste/src/app/services/contract-fixture.spec.ts`

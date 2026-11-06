@@ -40,4 +40,4 @@ Der Editor löscht nie Dateien aus dem Import-Ordner (außer Entwurf-JSON beim V
 
 - [`fixtures/import/2021/2021-01-18-keller-riesling-trocken.json`](fixtures/import/2021/2021-01-18-keller-riesling-trocken.json).
 - Test editor: `frontend/projects/editor/src/app/models/contract-fixture.spec.ts`.
-- Test pipeline: `scripts/tests/test_contract_fixtures.py`.
+- Test pipeline: `scripts/tests/pipeline/test_contract_fixtures.py`.

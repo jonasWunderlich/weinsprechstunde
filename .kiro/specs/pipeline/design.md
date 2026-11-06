@@ -130,7 +130,7 @@ Für `max_last_backups = N ≥ 1` ist die Anzahl `last_*.json` nach jedem Lauf �
 ### Property 21: Archival-Backup Intervall-Invariante
 Zwischen zwei Archival-Backups liegen stets ≥ `archival_interval_days` Tage. *Validates: Req 20.4, 20.5*
 
-Properties 7 (JSON-Roundtrip, Vertrag export-format) und 18 (WineSchema-Roundtrip, Vertrag import-format) sind in den Verträgen definiert; pipeline testet sie in `scripts/tests` (hypothesis).
+Properties 7 (JSON-Roundtrip, Vertrag export-format) und 18 (WineSchema-Roundtrip, Vertrag import-format) sind in den Verträgen definiert; pipeline testet sie in `scripts/tests/pipeline` (hypothesis).
 
 ## Error Handling
 
@@ -150,4 +150,4 @@ Properties 7 (JSON-Roundtrip, Vertrag export-format) und 18 (WineSchema-Roundtri
 pytest + hypothesis, temporäre Verzeichnisse (`tmp_path`):
 - Unit: `phase_backup` (Einzeldatei, Rolling Window, Intervall, Remote-Upload mit Fake-FTP), `phase_prepare` (EXIF, Auto-Image, Umbenennung, scaffold), `phase_export`, `phase_image_export`, `load_wine_schema`, `download_remote_import` (Fehlerfall).
 - Property: Properties 1–6, 8, 9, 20, 21 sowie 7 und 18 aus den Verträgen.
-- Contract-Fixture: `scripts/tests/test_contract_fixtures.py` (`fixtures/import/` → prepare + export → `fixtures/export/wines.json`).
+- Contract-Fixture: `scripts/tests/pipeline/test_contract_fixtures.py` (`fixtures/import/` → prepare + export → `fixtures/export/wines.json`).

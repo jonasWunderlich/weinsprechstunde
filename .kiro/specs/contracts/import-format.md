@@ -45,5 +45,5 @@ Maßgeblich: [`wine-schema.json`](../../../wine-schema.json) (Repo-Root). Feldna
 ## Golden Fixture
 
 - [`fixtures/import/`](fixtures/import/) (inkl. `_archive/`-Beispiel).
-- Test pipeline: `scripts/tests/test_contract_fixtures.py`.
+- Test pipeline: `scripts/tests/pipeline/test_contract_fixtures.py`.
 - Test editor: `frontend/projects/editor/src/app/models/contract-fixture.spec.ts`.
