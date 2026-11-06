@@ -29,7 +29,7 @@ Gemeinsame Logik nur über `@weinsprechstunde/shared`. Die App stellt `WineDataS
 |---|---|
 | Wine-Listing | rekursiv `entries()`, alle `.json` außer `_archive`; ungültiges JSON → als fehlerhaft markiert |
 | Wein lesen | JSON lesen, `File.lastModified` als Lade-Zeitstempel merken |
-| Speichern / Auto-Save | `lastModified` erneut lesen; Abweichung → `ConflictError`, sonst `createWritable()` (Regeln: editor-output) |
+| Speichern / Auto-Save | Datei erneut lesen (`readJson`); gleicher `lastModified` → `writeJson`, sonst Merge (siehe Konflikt), danach `createWritable()` (Regeln: editor-output); `writeJson` prüft den erwarteten `lastModified` weiter, bei erneutem Wechsel bis zu dreimal neu mergen. Nicht atomar |
 | Entwurf anlegen | `{Bild-Stem}.json` im Ordner des Bildes: Name, `image`, `tasting_date`, eingegebene Felder |
 | Bild verknüpfen (link-image) | `image` des bildlosen Eintrags setzen; Bild bei Bedarf in dessen JSON-Ordner verschieben (lesen → neu anlegen → Original entfernen) |
 | Bild-Listing | Scan ohne `_archive`, Endungen `.jpg .jpeg .png .webp` (case-insensitive); je Bild `name`, `date` (EXIF `DateTimeOriginal`, sonst `File.lastModified`), `assigned` (von einem `image`-Feld referenziert) |
@@ -62,10 +62,11 @@ Dynamisch aus `wine-schema.json` (neue Felder erscheinen ohne Code-Änderung).
 | audio, video | Medien-Picker |
 | schema-fremd | angezeigt und erhalten |
 
-Auto-Save: Debounce 500 ms pro Feld, Typkonvertierung, Konfliktschutz und Speicherstatus „Erfolg"/„Fehler" (Feldinhalte bleiben bei Fehler). Konflikt: Warnung, Überschreiben nur nach Bestätigung. Cloud-Sync-Konflikte löst die App nicht; die Prüfung über `File.lastModified` deckt nur lokale Änderung seit dem Laden ab.
+Auto-Save: Debounce 500 ms pro Feld, Typkonvertierung, Konfliktschutz und Speicherstatus „Erfolg"/„Fehler" (Feldinhalte bleiben bei Fehler). Konflikt: feldweiser Drei-Wege-Merge (siehe unten), Dialog nur für Felder mit abweichenden Änderungen. Cloud-Sync-Konflikte (Konfliktkopien) löst die App nicht.
 ### Öffnen und Speichern (Req 17.6, 17.9a–c, 17.21a–b)
 - Öffnen: Der Lade-Effekt im WineEditor hängt am Pfad des Eintrags (nicht am Cache-Objekt) und läuft nur bei Pfadwechsel. Er zeigt den Cache-Stand schreibgeschützt (`aria-busy`), liest per `readJson` (`wine` + `lastModified`) und initialisiert danach den `EditorSaveService`. Ein Token (latest-wins) verwirft späte Antworten. Lesefehler (`NotFoundError`, defektes JSON) ⇒ Warnung statt Formular, Save-Service deaktiviert. Weicht der frische `lastModified` vom Cache ab, wird der Cache-Eintrag angeglichen.
 - Speichern: `EditorSaveService` führt Speichervorgänge je Eintrag über eine Promise-Kette seriell aus. Nach jedem Erfolg ruft er `onSaved(path, wine, lastModified)`; der WineEditor leitet das an `EditorStateService.applyEntryState` weiter. Dieses ersetzt das `WineEntry` und befüllt `wineData.wines` mit **demselben** Wine-Objekt (die Liste verbindet über Objektidentität). `lastModified` stammt immer aus dem Rückgabewert von `writeJson`.
+- Konflikt: `mergeThreeWay(base, local, disk)` (`models/wine-merge.ts`, rein) liefert `merged`, `fromDisk` und `conflicts`. Basis ist der letzte bekannte Plattenstand (Laden bzw. eigenes Speichern), lokal der Basisstand plus die gespeicherten (typkonvertierten) Feldwerte. `fromDisk` meldet der Service über `onMerged`; der WineEditor zeigt diese Felder im Formular (andere Eingaben bleiben) und einen schließbaren Hinweis. Bei Konflikten hält der Service die ungespeicherten Werte und das Merge-Ergebnis; `resolveConflicts(choices)` schreibt erst, wenn jedes Konfliktfeld gewählt ist (`applyConflictChoices`). Wechselt die Datei währenddessen erneut, werden die Konflikte neu bestimmt.
 - Wechsel: `flush()` speichert wartende Eingaben sofort; bei Fehlschlag Hinweis `flush-notice` (Datei, Grund), die Auswahl bleibt gewechselt.
 - Der Aktualisieren-Button lädt den bereits geöffneten Eintrag nicht neu; erneutes Auswählen liest frisch.
 
@@ -92,8 +93,8 @@ Befehl und Dist-Pfad siehe oben (Deploy-seitige Sicht: Vertrag build-output, Pfl
 
 Tag-Format: `// Feature: weinliste, Property N: <text>`. Mindestens 100 Iterationen (fast-check). Die File System Access API wird über den `FileSystemAccessService` gemockt.
 
-### Property 17: Konflikt-Erkennung über `File.lastModified`
-Weicht `File.lastModified` beim Speichern vom Lade-Zeitstempel ab, wird der Schreibvorgang abgelehnt und eine Konfliktwarnung ausgelöst, ohne Überschreiben ohne Bestätigung. *Validates: Req 17.25*
+### Property 17: Feldweiser Merge bei abweichendem `File.lastModified`
+Bei gleichem Zeitstempel wird gespeichert. Bei abweichendem Zeitstempel gilt je Feld: nur lokal geändert → lokal, nur auf der Platte geändert → Platte, gleich geändert → kein Konflikt; nur bei abweichend geänderten Feldern wird nicht geschrieben und ein Konflikt gemeldet. *Validates: Req 17.25*
 
 ### Property 23: Clientseitiges Thumbnail lässt Original unverändert und erhält Seitenverhältnis
 Für Originale (`.jpg/.jpeg/.png/.webp`) beliebiger Maße bleibt die Originaldatei byte-identisch, und das Seitenverhältnis der Vorschau weicht um höchstens 0,01 ab. *Validates: Req 17.33*
@@ -119,7 +120,9 @@ Property 28 (Schema-fremde Felder bleiben erhalten, Roundtrip) ist im Vertrag ed
 | Freigabe verweigert/zurückgezogen | Aufforderung zur (Re-)Freigabe, kein Datenzugriff |
 | Keine File System Access API | verständlicher Hinweis statt UI |
 | Schreibfehler Auto-Save | Status „Fehler", Feldinhalte bleiben |
-| `lastModified` abweichend | Konfliktwarnung, kein Schreiben ohne Bestätigung |
+| `lastModified` abweichend, Felder nicht kollidierend | Merge, Plattenfelder im Formular mit Hinweis, speichern |
+| `lastModified` abweichend, Felder kollidieren | Dialog je Konfliktfeld, kein Schreiben bis zur Wahl |
+| Datei beim Speichern nicht mehr vorhanden | Warnung wie beim Öffnen, kein Schreiben |
 | Defekte JSON | in Liste als fehlerhaft, nicht im WineEditor |
 | Datei beim Öffnen nicht lesbar (fehlt, JSON defekt) | Warnung statt Formular mit Verweis auf Aktualisieren, kein Speichern |
 | Sichern beim Eintragswechsel scheitert | schließbarer Hinweis mit Dateipfad, nichts überschrieben |
@@ -130,7 +133,7 @@ Property 28 (Schema-fremde Felder bleiben erhalten, Roundtrip) ist im Vertrag ed
 ## Testing Strategy
 
 vitest + jsdom + fast-check (`ng test`), kein Backend-Teststack.
-- Unit: Freigabe/Handle-Persistenz (gemockt), Unsupported-Browser-Hinweis, keine Netzwerkanfragen/Weindaten, Auto-Refresh und Aktualisieren-Button ohne Polling, Layout/Auswahl, Standardsortierung, Eintragstyp-Filter inkl. Auto-Umschalten, Formular aus WineSchema, Chips (Array), Audio-/Video-Picker, Unvollständig-/Fehlerhaft-Markierung, schema-fremde Felder, Bild-Listing (`date`/`assigned`), ImagePicker (Standard, Umschalter, Datumssortierung, Namensfilter), Auto-Save (Debounce, Typkonvertierung, Status, Warteschlange, Flush), Öffnen mit frischem Lesen (read-only, latest-wins, Lesefehler-Warnung), Regression A→B→A mit simulierter Platte (gespeicherter Stand sichtbar, kein falscher Konflikt, echter externer Konflikt bleibt erkannt), Cache-Update nach Speichern (Objektidentität, Liste/Filter, Formular nicht zurückgesetzt), Konfliktwarnung, Entwurf, Anlegen (a)/(b), Archivieren (kein Löschen), `_archive`-Ignorierung.
+- Unit: Freigabe/Handle-Persistenz (gemockt), Unsupported-Browser-Hinweis, keine Netzwerkanfragen/Weindaten, Auto-Refresh und Aktualisieren-Button ohne Polling, Layout/Auswahl, Standardsortierung, Eintragstyp-Filter inkl. Auto-Umschalten, Formular aus WineSchema, Chips (Array), Audio-/Video-Picker, Unvollständig-/Fehlerhaft-Markierung, schema-fremde Felder, Bild-Listing (`date`/`assigned`), ImagePicker (Standard, Umschalter, Datumssortierung, Namensfilter), Auto-Save (Debounce, Typkonvertierung, Status, Warteschlange, Flush), Öffnen mit frischem Lesen (read-only, latest-wins, Lesefehler-Warnung), Regression A→B→A mit simulierter Platte (gespeicherter Stand sichtbar, kein falscher Konflikt, Feldkonflikt bleibt erkannt), Cache-Update nach Speichern (Objektidentität, Liste/Filter, Formular nicht zurückgesetzt), Merge-Funktion (`wine-merge.ts`, rein; Unit und fast-check), Merge beim Speichern, Konfliktdialog je Feld, Datei fehlt beim Speichern, Entwurf, Anlegen (a)/(b), Archivieren (kein Löschen), `_archive`-Ignorierung.
 - Property: 17, 23–27 und 28 (aus editor-output).
 - Contract-Fixture: `frontend/projects/editor/src/app/models/contract-fixture.spec.ts` (`fixtures/import/`).
 - Filter-/Schema-Logik der geteilten Library wird in der Library getestet, nicht im Editor dupliziert.

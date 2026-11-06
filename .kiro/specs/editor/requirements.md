@@ -32,7 +32,7 @@ Plattform und Ordner
 17.3 Erneutes Öffnen mit persistiertem Handle: kurze Re-Autorisierung statt erneuter Ordnersuche.
 17.4 Nur Chromium (Chrome/Edge); ohne File System Access API verständlicher Hinweis.
 17.5 Verteilung der Dateien allein per Cloud-Sync; der Editor löst keine Sync-Konflikte (gleichzeitiges Bearbeiten derselben Datei kann Sync-Konflikte erzeugen, außerhalb der Verantwortung der App).
-17.6 Nach eigener Aktion wird die Liste automatisch aktualisiert: Anlegen, Archivieren und Bild-Verknüpfen per erneutem Scan; jedes erfolgreiche Speichern (Auto-Save und Überschreiben) ersetzt den Cache-Eintrag durch den gespeicherten Stand (neuer `lastModified` aus dem Schreibvorgang), ohne Scan und ohne das Formular zurückzusetzen. Name, Sortierung, Filter und Autocomplete sind danach aktuell.
+17.6 Nach eigener Aktion wird die Liste automatisch aktualisiert: Anlegen, Archivieren und Bild-Verknüpfen per erneutem Scan; jedes erfolgreiche Speichern (Auto-Save und gelöster Feldkonflikt) ersetzt den Cache-Eintrag durch den gespeicherten Stand (neuer `lastModified` aus dem Schreibvorgang), ohne Scan und ohne das Formular zurückzusetzen. Name, Sortierung, Filter und Autocomplete sind danach aktuell.
 17.7 Für Änderungen anderer Beteiligter ein manueller Aktualisieren-Button; kein automatisches Polling.
 
 Layout und Liste
@@ -62,7 +62,7 @@ Auto-Save
 17.22 `number`-Felder typrichtig als JSON-Zahl (`year` Ganzzahl, `price` 2, `rating` 1 Nachkommastelle), Dezimal-Komma akzeptiert (`"6,99"` → `6.99`), konsistent zur Normalisierung der Pipeline.
 17.23 Erfolgreicher Auto-Save → Speicherstatus-Indikator „Erfolg".
 17.24 Fehlgeschlagener Auto-Save → Indikator „Fehler" mit erkennbarer Fehleranzeige; zuletzt eingegebene Feldinhalte bleiben erhalten.
-17.25 Best-effort-Konflikterkennung über `File.lastModified`: Datei seit dem Laden extern verändert → Warnung, kein Überschreiben ohne Bestätigung.
+17.25 Best-effort-Konflikterkennung feldweise: Beim Speichern wird die Datei erneut gelesen. Gleicher `File.lastModified` wie zuletzt bekannt (Laden bzw. eigenes Speichern) → speichern. Sonst Drei-Wege-Merge je Feld (Basis = letzter bekannter Plattenstand, lokal, Platte; Vergleich in gespeicherten Typen, auch schema-fremde Felder): nur lokal geändert → lokal; nur auf der Platte geändert → Plattenwert, im Formular sichtbar mit Hinweis auf die übernommenen Felder; gleich geändert → kein Konflikt. Nur bei abweichend geänderten Feldern erscheint ein Dialog mit diesen Feldern und beiden Werten; je Feld „meine Version“ oder „neue Version von der Platte“ (keine Vorauswahl), danach wird gespeichert. Fehlt die Datei beim Speichern, erscheint die Warnung wie beim Öffnen.
 17.26 Ungültiges JSON in `import_dir`: Datei in Liste als fehlerhaft markiert, nicht im WineEditor geöffnet (Korrektur im Dateisystem).
 17.27 Schema-fremde Felder werden im WineEditor angezeigt und beim Speichern erhalten.
 

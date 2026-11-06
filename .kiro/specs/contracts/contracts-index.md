@@ -3,7 +3,7 @@
 | Vertrag | Version | Produzent | Konsumenten |
 |---|---|---|---|
 | [import-format](import-format.md) | 1.0.0 | Quelle/Editor | editor, pipeline |
-| [editor-output](editor-output.md) | 1.0.0 | editor | pipeline |
+| [editor-output](editor-output.md) | 1.1.0 | editor | pipeline |
 | [export-format](export-format.md) | 1.1.0 | pipeline | weinliste, deploy-ftp |
 | [shared-api](shared-api.md) | 1.0.0 | shared | editor, weinliste |
 | [deploy-input](deploy-input.md) | 1.2.0 | deploy-ftp | deploy-ftp (Erwartung an pipeline/build) |

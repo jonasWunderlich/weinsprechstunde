@@ -1,9 +1,10 @@
 # Vertrag: editor-output
 
-- Version: 1.0.0
+- Version: 1.1.0
 - Produzent (Eigentümer): editor
 - Konsumenten: pipeline
 - Changelog:
+  - 1.1.0 (2026-11-07): Konfliktschutz feldweise: abweichender Zeitstempel führt zu Drei-Wege-Merge; Konflikt nur bei Feldern mit abweichenden Änderungen auf beiden Seiten. Dateiformat und Schreibregeln unverändert. editor-output 1.1.0 geprüft, keine Auswirkung auf pipeline.
   - 1.0.0 (2026-11-06): Erstfassung aus Ist-Zustand.
 
 Datenstruktur: [`wine-schema.json`](../../../wine-schema.json). Ordnerstruktur: [import-format](import-format.md). Dieser Vertrag beschreibt nur, was der Editor in den Import-Ordner schreibt.
@@ -28,7 +29,7 @@ Der Editor löscht nie Dateien aus dem Import-Ordner (außer Entwurf-JSON beim V
 - Number-Felder: JSON-Zahl, Dezimal-Komma akzeptiert, Rundung nach `decimals` (`year` Integer, `rating` 1, `price` 2).
 - `grape`: Array aus getrimmten, nicht-leeren, duplikatfreien Tags (Eingabe kommagetrennt).
 - `audio`/`video`: Dateiname ohne Pfad, Datei existiert im Import-Ordner.
-- Konfliktschutz: Schreiben nur wenn `File.lastModified` dem Ladewert entspricht; sonst `ConflictError`, keine Überschreibung ohne Bestätigung.
+- Konfliktschutz: Vor dem Schreiben wird die Datei erneut gelesen. Entspricht `File.lastModified` dem zuletzt bekannten Wert, wird geschrieben. Sonst Drei-Wege-Merge je Feld (Basis = zuletzt bekannter Plattenstand, lokal, Platte; Vergleich in gespeicherten Typen, schema-fremde Felder eingeschlossen): nur lokal geänderte Felder lokal, nur auf der Platte geänderte von der Platte, gleich geänderte ohne Konflikt. Nur bei abweichend geänderten Feldern ist Konflikt; dann wird nicht geschrieben, bis der Benutzer je Feld eine Version wählt. Datei fehlt → kein Schreiben, Warnung. Das Schreiben selbst ist nicht atomar (Restrisiko bei gleichzeitiger Cloud-Synchronisation).
 
 ## Invarianten (Roundtrip)
 
