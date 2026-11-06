@@ -10,10 +10,10 @@
   /* Platz oben für den herausragenden Rating-Kreis, damit er nicht
      vom Textinhalt überdeckt wird. */
   padding-top: 1.6rem;
-  border: 3px solid var(--text-dark);
+  border: 3px solid var(--text-color-dark);
   border-radius: var(--radius-input);
-  background: var(--background-info-tile);
-  color: var(--text-dark);
+  background: var(--color-background-info-tile);
+  color: var(--text-color-dark);
   max-height: calc(100% - 1rem);
   /* overflow sichtbar lassen, damit der oben überstehende Rating-Kreis
      nicht abgeschnitten wird; langer Textinhalt wird separat begrenzt. */
@@ -36,20 +36,21 @@
 
 .wine-year {
   font-size: 0.8rem;
-  color: var(--text-muted);
+  color: var(--text-color-muted);
 }
 
 .wine-producer,
 .wine-grape,
 .wine-origin {
   font-size: 0.82rem;
-  color: var(--text-muted);
+  color: var(--text-color-muted);
 }
 
 @media (max-width: 600px) {
   .overlay {
     padding: 0.5rem 0.6rem;
   }
+
   .wine-name {
     font-size: 0.85rem;
   }

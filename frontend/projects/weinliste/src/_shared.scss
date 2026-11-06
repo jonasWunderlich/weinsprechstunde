@@ -7,15 +7,15 @@ $bp-desktop: 1024px;
   height: 40px;
   padding: 0 1rem;
   border-radius: var(--radius-pill);
-  border: 1px solid var(--accent-wine);
-  background: var(--color-surface);
-  color: var(--accent-wine);
+  border: 1px solid var(--color-accent);
+  background: var(--color-background-surface);
+  color: var(--color-accent);
   cursor: pointer;
   box-shadow: var(--box-shadow-subtle);
 }
 
 @mixin card-surface {
-  background: var(--color-surface);
+  background: var(--color-background-surface);
   border-radius: var(--radius-input);
   box-shadow: var(--box-shadow-subtle);
 }

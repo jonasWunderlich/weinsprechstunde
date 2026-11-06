@@ -10,9 +10,9 @@
   padding: 4rem 1rem;
   text-align: center;
   font-size: 1.15rem;
-  color: var(--text-muted);
+  color: var(--text-color-muted);
 }
 
 .state--error {
-  color: var(--accent-link-hover);
+  color: var(--color-critical);
 }

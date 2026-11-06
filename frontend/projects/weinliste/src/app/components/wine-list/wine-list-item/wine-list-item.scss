@@ -10,13 +10,15 @@
   padding: 0.75rem 1rem;
   border: none;
   border-bottom: 1px solid rgba(43, 35, 32, 0.08);
-  background: var(--color-surface);
-  color: var(--text-dark);
+  background: var(--color-background-surface);
+  color: var(--text-color-dark);
   text-align: left;
   cursor: pointer;
+  box-shadow: none;
 
   &:hover {
-    background: #f6efeb;
+    background-color: var(--color-hover);
+    color: var(--text-color-light);
   }
 }
 
@@ -27,7 +29,7 @@
   height: 3rem;
   border-radius: var(--radius-input);
   overflow: hidden;
-  background: var(--color-surface-alt, #f0e9e4);
+  background: var(--color-background-surface-alt, #f0e9e4);
 }
 
 .li-name {
@@ -39,7 +41,7 @@
 .li-year,
 .li-country {
   flex: 0 0 auto;
-  color: var(--text-muted);
+  color: var(--text-color-muted);
   font-size: 0.85rem;
 }
 
@@ -53,6 +55,7 @@
     flex-wrap: wrap;
     gap: 0.4rem 0.75rem;
   }
+
   .li-name {
     flex-basis: 100%;
   }

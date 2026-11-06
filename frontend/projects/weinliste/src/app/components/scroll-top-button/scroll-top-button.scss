@@ -13,14 +13,5 @@ button {
   height: 3rem;
   border-radius: 50%;
   border: none;
-  background: var(--color-button-bg);
-  color: var(--color-button-label);
   font-size: 1.25rem;
-  cursor: pointer;
-  box-shadow: var(--box-shadow-subtle);
-  transition: background 0.2s ease;
-
-  &:hover {
-    background: var(--accent-link-hover);
-  }
 }

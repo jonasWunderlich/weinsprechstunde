@@ -5,13 +5,13 @@
     </span>
     <span class="app-name">Weinsprechstunde</span>
   </button>
-  <button class="open-menu-dialog-btn" (click)="menuHidden = !menuHidden" [class.active]="!menuHidden"
+  <button class="open-menu-dialog-btn" (click)="showMenuDialog.set(!showMenuDialog())" [class.active]="showMenuDialog()"
     title="Open Menu Options">
     🪩
   </button>
 </nav>
 
-@if (!menuHidden) {
+@if (showMenuDialog()) {
 <div class="menu-dialog">
   <a (click)="navigateTo('about')">Über Uns</a>
   <a (click)="navigateTo('impressum')">Impressum</a>

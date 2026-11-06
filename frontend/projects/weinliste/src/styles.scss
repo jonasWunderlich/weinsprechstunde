@@ -1,30 +1,35 @@
 /* Globale Design-Tokens (Light Mode, Weinpalette), Resets, Grundtypografie. */
 
 :root {
-  --color-dark: #161211;
-  --color-bg: #FFF;
-  --color-surface: #ffffff;
-  --text-dark: #32022b;
-  --text-muted: rgba(43, 35, 32, 0.55);
-  --accent-wine: #EF5B5B;
-  --accent-link: #20A39E;
-  --accent-link-hover: #EF5B5B;
-  --color-highlight: #B4C292; /* Gold für Rating-Kreis */
-  --background-info-tile: rgba(255, 255, 255, 0.95);
-  --padding-horizontal-md: 12px;
+  --color-accent: rgb(0, 158, 255);
+  --color-hover: #ffba49;
+  --color-focus: rgb(0, 83, 135);
+  --color-active: #ef5b5b;
+  --color-highlight: #b4c292;
+
+  --color-critical: red;
+  --color-black: #161211;
+  --color-white: #FFF;
+
+  --text-color-light: var(--color-white);
+  --text-color-dark: #161211;
+  --text-color-muted: rgba(43, 35, 32, 0.55);
+
+  --color-background-main: var(--color-white);
+  --color-background-surface: var(--color-white);
+  --color-background-info-tile: rgba(255, 255, 255, 0.95);
+
+  --color-button-bg: var(--color-accent);
+  --color-button-label: var(--text-color-light);
+
+  --color-filter-border: var(--color-accent);
+  --color-filter-background: var(--text-color-light);
+
   --box-shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.12);
-  --radius-pill: 20px;
+  --radius-pill: 8px;
   --radius-input: 8px;
-
-  --color-hover: #EF5B5B;
-  --color-active: #FFBA49;
-  --color-focus: #A4A9AD;
-
-  --color-button-bg: #20A39E;
-  --color-button-label: #FFF;
-  --color-filter-border: #FFF;
-  --color-filter-border: var(--color-button-bg);
-  --color-filter-background: #FFF;
+  --padding-padding-unit: 4px;
+  --padding-horizontal-md: 12px;
 }
 
 *,
@@ -40,8 +45,8 @@ body {
 }
 
 body {
-  background: var(--color-bg);
-  color: var(--text-dark);
+  background: var(--color-background-main);
+  color: var(--text-color-dark);
   font-family:
     'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -50,12 +55,22 @@ body {
 }
 
 a {
-  color: var(--accent-link);
+  color: var(--color-accent);
   text-decoration: none;
-}
+  transition: color 0.2s ease;
 
-a:hover {
-  color: var(--accent-link-hover);
+  &:hover {
+    color: var(--color-hover);
+  }
+
+  &:focus {
+    color: var(--color-active);
+  }
+
+  &:active,
+  &.active {
+    color: var(--color-active);
+  }
 }
 
 button {
@@ -68,6 +83,11 @@ button {
   background-color: var(--color-button-bg);
   color: var(--color-button-label);
   border-radius: var(--radius-pill);
+  box-shadow: var(--box-shadow-subtle);
+  font-size: 0.85rem;
+  font-weight: 700;
+  transition: background 0.2s ease;
+  cursor: pointer;
 
   &:hover {
     background-color: var(--color-hover);
@@ -95,21 +115,22 @@ input {
   border-radius: var(--radius-input);
   border: 2px solid var(--color-filter-border);
   border-radius: var(--radius-input);
-  color: var(--text-dark);
+  color: var(--text-color-dark);
+  transition: color, border, background-color 0.2s ease;
 
   &:hover {
     border-color: var(--color-hover);
-    color: var(--text-dark);
+    color: var(--text-color-dark);
   }
 
   &:focus {
     border-color: var(--color-focus);
-    color: var(--text-dark);
+    color: var(--text-color-dark);
   }
 
   &:active,
   &.active {
     background-color: var(color-active);
-    color: var(--text-dark);
+    color: var(--text-color-dark);
   }
 }

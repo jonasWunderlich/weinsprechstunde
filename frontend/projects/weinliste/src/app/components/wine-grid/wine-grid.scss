@@ -6,7 +6,8 @@
   display: grid;
   gap: var(--padding-horizontal-md);
   padding: 0 var(--padding-horizontal-md) var(--padding-horizontal-md);
-  grid-template-columns: 1fr; /* mobile < 600px */
+  grid-template-columns: 1fr;
+  /* mobile < 600px */
 }
 
 @media (min-width: 320px) {
@@ -34,13 +35,24 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
-  border: 2px dashed var(--accent-wine);
-  border-radius: var(--radius-input);
-  background: var(--color-surface);
-  color: var(--accent-wine);
-  font-size: 1rem;
   cursor: pointer;
+  gap: 0.5rem;
+  font-size: 1rem;
+  background: var(--color-background-surface);
+  color: var(--color-accent);
+
+  &:hover {
+    color: var(--color-hover);
+  }
+
+  &:focus {
+    color: var(--color-focus);
+  }
+
+  &:active,
+  &.active {
+    color: var(--color-active);
+  }
 }
 
 .back-arrow {
@@ -50,7 +62,7 @@
 .empty-state {
   padding: 3rem 1rem;
   text-align: center;
-  color: var(--text-muted);
+  color: var(--text-color-muted);
   font-size: 1.1rem;
 }
 
