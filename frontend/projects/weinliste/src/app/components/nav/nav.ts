@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { FilterService } from '@weinsprechstunde/shared';
 
 /** NavBar: App-Name + Logo-Platzhalter. Navigation vorerst ohne Menüpunkte. */
@@ -8,13 +8,18 @@ import { FilterService } from '@weinsprechstunde/shared';
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './nav.html',
   styleUrl: './nav.scss',
+  imports: [RouterLink],
 })
 export class NavComponent {
   private readonly router = inject(Router);
   private readonly filterService = inject(FilterService);
+  menuHidden = true;
 
-  goHome(): void {
+  navigateTo(path: string): void {
     this.filterService.clearAllFilters();
-    this.router.navigate(['/']);
+    this.menuHidden = true;
+    this.router.navigate([path]);
   }
+
+
 }

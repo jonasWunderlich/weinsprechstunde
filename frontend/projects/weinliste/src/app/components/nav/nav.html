@@ -1,8 +1,20 @@
 <nav class="navbar">
-  <button class="brand" type="button" (click)="goHome()" aria-label="Zur Startseite">
+  <button class="brand" type="button" (click)="navigateTo('/')" aria-label="Zur Startseite">
     <span class="logo" aria-hidden="true">
       <img src="images/logo.svg" />
     </span>
     <span class="app-name">Weinsprechstunde</span>
   </button>
+  <button class="open-menu-dialog-btn" (click)="menuHidden = !menuHidden" [class.active]="!menuHidden"
+    title="Open Menu Options">
+    🪩
+  </button>
 </nav>
+
+@if (!menuHidden) {
+<div class="menu-dialog">
+  <a (click)="navigateTo('about')">Über Uns</a>
+  <a (click)="navigateTo('impressum')">Impressum</a>
+  <a (click)="navigateTo('datenschutz')">Datenschutz</a>
+</div>
+}

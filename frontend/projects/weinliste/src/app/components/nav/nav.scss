@@ -13,7 +13,7 @@
 .brand {
   display: flex;
   align-items: end;
-  gap: 0.5rem;
+  gap: 1rem;
   border: none;
   background: none;
   cursor: pointer;
@@ -22,86 +22,64 @@
   :hover {
     color: var(--accent-link-hover);
   }
-}
 
-.logo {
-  font-size: 1.6rem;
-  height: 40px;
-  img {
-    height: 100%;
+  .logo {
+    font-size: 1.6rem;
+    height: 40px;
+
+    img {
+      height: 100%;
+    }
+  }
+
+  .app-name {
+    font-size: 2rem;
+    font-family: Helvetica, Arial, sans-serif;
+    font-weight: 300;
+    line-height: 0.8;
   }
 }
 
-.app-name {
-  font-size: 2rem;
-  font-family: Cambria, Cochin, Georgia, Times, 'Times New Roman', serif;
-  font-family: Helvetica, Arial, sans-serif;
-  font-weight: 700;
-  line-height: 0.8;
-  // text-transform: uppercase;
-}
-
-.menus {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.menu {
-  position: relative;
-}
-
-.menu-trigger {
-  height: 40px;
-  padding: 0 1rem;
-  border-radius: var(--radius-pill);
-  border: 1px solid var(--accent-wine);
-  background: var(--color-surface);
-  color: var(--accent-wine);
-  font-size: 0.9rem;
-  cursor: pointer;
-}
-
-.dropdown {
-  position: absolute;
-  top: calc(100% + 0.4rem);
-  right: 0;
-  min-width: 220px;
-  max-height: 60vh;
-  overflow: auto;
-  padding: 0.5rem;
-  background: var(--color-surface);
-  border: 1px solid rgba(43, 35, 32, 0.15);
-  border-radius: var(--radius-input);
-  box-shadow: var(--box-shadow-subtle);
-  column-count: 1;
-}
-
-@media (min-width: 1025px) {
-  .dropdown {
-    column-count: 2;
-    min-width: 360px;
-  }
-}
-
-.dropdown-item {
-  display: block;
-  width: 100%;
-  padding: 0.35rem 0.5rem;
-  border: none;
+.open-menu-dialog-btn {
+  flex: 0;
   background: none;
-  text-align: left;
-  color: var(--accent-link);
-  font-size: 0.88rem;
+  border: none;
   cursor: pointer;
+  z-index: 1001;
+  font-size: 30px;
 
   &:hover {
-    color: var(--accent-link-hover);
+    filter: drop-shadow(0 0 8px var(--text-color-link-hover));
+  }
+
+  &.active {
+    filter: drop-shadow(0 0 8px var(--color-highlight));
   }
 }
 
-.dropdown-empty {
-  display: block;
-  padding: 0.35rem 0.5rem;
-  color: var(--text-muted);
-  font-size: 0.85rem;
+.hidden {
+  display: none;
+}
+
+.menu-dialog {
+  position: fixed;
+  top: 66px;
+  right: 8px;
+  background-color: #FFF;
+  padding: 24px;
+  z-index: 1000;
+  box-shadow: 0 15px 45px rgba(0, 0, 0, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+
+  a {
+    transition: all 0.2s;
+    cursor: pointer;
+
+    &:hover {
+      color: var(--text-color-link-hover);
+      text-decoration: underline;
+    }
+  }
 }
