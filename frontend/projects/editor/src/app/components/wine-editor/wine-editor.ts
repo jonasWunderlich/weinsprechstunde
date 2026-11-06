@@ -23,6 +23,7 @@ import {
   unknownFieldKeys,
 } from '../../models/wine-field-conversion';
 import { CreatedListItem } from '../../models/editor-list.model';
+import { ConflictChoice } from '../../models/wine-merge';
 import { ImagePickerComponent } from '../image-picker/image-picker';
 import { EntryThumbnailComponent } from '../entry-thumbnail/entry-thumbnail';
 
@@ -111,6 +112,22 @@ export class WineEditorComponent {
    */
   readonly flushNotice = signal<string | null>(null);
 
+  /** Felder, die beim letzten Speichern von der Platte übernommen wurden (Hinweis). */
+  readonly diskNotice = signal<string[]>([]);
+
+  /** Felder des offenen Feldkonflikts (Dialog). */
+  readonly conflicts = this.save.conflicts;
+
+  /** Gewählte Version je Konfliktfeld; ohne Vorauswahl. */
+  readonly conflictChoices = signal<Record<string, ConflictChoice>>({});
+
+  /** `true`, sobald für jedes Konfliktfeld eine Version gewählt ist. */
+  readonly allConflictsChosen = computed(() => {
+    const choices = this.conflictChoices();
+    const list = this.conflicts();
+    return list.length > 0 && list.every((c) => choices[c.field] !== undefined);
+  });
+
   /** Ende der zuletzt gestarteten Sicherung ausstehender Eingaben (vor dem Lesen abwarten). */
   private pendingFlush: Promise<void> = Promise.resolve();
 
@@ -185,7 +202,17 @@ export class WineEditorComponent {
     // Erfolgreiche Speichervorgänge halten den Scan-Cache aktuell (Req 17.6).
     this.save.onSaved = (path, wine, lastModified) =>
       this.state.applyEntryState(path, wine, lastModified);
+    this.save.onMerged = (path, fields, wine) => {
+      if (path !== this.createdPath()) return;
+      this.takeFromDisk(fields, wine);
+    };
     this.destroyRef.onDestroy(() => void this.flushPending());
+
+    // Neuer oder geänderter Konflikt: Wahl zurücksetzen (keine Vorauswahl).
+    effect(() => {
+      this.conflicts();
+      untracked(() => this.conflictChoices.set({}));
+    });
 
     // Bei jedem Wechsel des geöffneten Eintrags (nur bei Pfadwechsel, nicht bei
     // Cache-Updates): zuerst den Cache-Stand read-only zeigen, dann frisch von der Platte
@@ -238,6 +265,7 @@ export class WineEditorComponent {
     void this.flushPending();
     this.loadToken++;
     this.save.deactivate();
+    this.diskNotice.set([]);
     this.loading.set(false);
     this.loadError.set(null);
   }
@@ -253,6 +281,7 @@ export class WineEditorComponent {
     const item = this.created();
     void this.flushPending();
     this.save.deactivate();
+    this.diskNotice.set([]);
     this.loadError.set(null);
     this.loading.set(true);
     if (item?.wine) this.showWine(item.wine, schema);
@@ -289,25 +318,50 @@ export class WineEditorComponent {
     }
   }
 
-  /** Befüllt das Formular aus einem Wine-Objekt (Schema-Felder und schema-fremde Felder). */
-  private showWine(wine: Wine, schema: WineSchemaField[]): void {
-    const next: Record<string, string | string[]> = {};
-    for (const f of schema) {
-      const raw = wine[f.field];
-      if (f.field === 'grape') {
-        next[f.field] = Array.isArray(raw) ? raw.map(String) : isPresent(raw) ? [String(raw)] : [];
-      } else {
-        next[f.field] = isPresent(raw) ? String(raw) : '';
-      }
+  /** Formularwert eines Schema-Feldes aus einem Wine-Objekt. */
+  private formValue(wine: Wine, field: string): string | string[] {
+    const raw = wine[field];
+    if (field === 'grape') {
+      return Array.isArray(raw) ? raw.map(String) : isPresent(raw) ? [String(raw)] : [];
     }
-    this.values.set(next);
+    return isPresent(raw) ? String(raw) : '';
+  }
 
-    // Schema-fremde Felder anzeigen (Req 17.27).
-    const extras = unknownFieldKeys(wine, schema).map((key) => ({
+  /** Schema-fremde Felder eines Weins zur Anzeige (Req 17.27). */
+  private extrasOf(wine: Wine, schema: WineSchemaField[]): { key: string; value: string }[] {
+    return unknownFieldKeys(wine, schema).map((key) => ({
       key,
       value: this.stringifyExtra(wine[key]),
     }));
-    this.extraFields.set(extras);
+  }
+
+  /** Befüllt das Formular aus einem Wine-Objekt (Schema-Felder und schema-fremde Felder). */
+  private showWine(wine: Wine, schema: WineSchemaField[]): void {
+    const next: Record<string, string | string[]> = {};
+    for (const f of schema) next[f.field] = this.formValue(wine, f.field);
+    this.values.set(next);
+    this.extraFields.set(this.extrasOf(wine, schema));
+  }
+
+  /**
+   * Zeigt Felder, die beim Speichern von der Platte übernommen wurden, im Formular
+   * (andere Felder und Eingaben in Arbeit bleiben unberührt) und merkt sie für den Hinweis.
+   */
+  private takeFromDisk(fields: string[], wine: Wine): void {
+    const schema = this.wineData.schema();
+    const known = new Set(schema.map((f) => f.field));
+    this.values.update((v) => {
+      const next = { ...v };
+      for (const f of fields) if (known.has(f)) next[f] = this.formValue(wine, f);
+      return next;
+    });
+    if (fields.some((f) => !known.has(f))) this.extraFields.set(this.extrasOf(wine, schema));
+    this.diskNotice.update((prev) => [...new Set([...prev, ...fields])]);
+  }
+
+  /** Schließt den Hinweis auf von der Platte übernommene Felder. */
+  dismissDiskNotice(): void {
+    this.diskNotice.set([]);
   }
 
   /**
@@ -606,30 +660,28 @@ export class WineEditorComponent {
     this._imagePickerOpen.set(false);
   }
 
-  // ── Konfliktbestätigung (Req 17.25) ────────────────────────────────────────
+  // ── Feldkonflikt (Req 17.25) ───────────────────────────────────────────────
 
-  /** Aktuelle Feldwerte als zu speicherndes Set (für die Konfliktbestätigung). */
-  private currentFieldValues(): Record<string, unknown> {
-    const out: Record<string, unknown> = {};
-    for (const f of this.fields()) {
-      const raw = this.values()[f.schema.field];
-      if (f.kind === 'chips') {
-        out[f.schema.field] = Array.isArray(raw) ? parseGrapeTags(raw) : [];
-      } else {
-        out[f.schema.field] = this.convertForSave(f, typeof raw === 'string' ? raw : '');
-      }
-    }
-    return out;
+  /** Wählt für ein Konfliktfeld die eigene oder die Version von der Platte. */
+  chooseConflict(field: string, choice: ConflictChoice): void {
+    this.conflictChoices.update((c) => ({ ...c, [field]: choice }));
   }
 
-  /** Überschreibt die extern veränderte Datei nach Benutzerbestätigung (Req 17.25). */
-  async confirmOverwrite(): Promise<void> {
-    if (this.loading()) return;
-    await this.save.confirmOverwrite(this.currentFieldValues());
+  /** Speichert mit den gewählten Versionen je Konfliktfeld (Req 17.25). */
+  async resolveConflicts(): Promise<void> {
+    if (this.loading() || !this.allConflictsChosen()) return;
+    await this.save.resolveConflicts(this.conflictChoices());
+  }
+
+  /** Anzeigetext eines Feldwerts im Konfliktdialog. */
+  conflictValue(v: unknown): string {
+    if (v === undefined) return '(leer)';
+    if (typeof v === 'string') return v === '' ? '(leer)' : v;
+    return Array.isArray(v) ? v.join(', ') : JSON.stringify(v);
   }
 
   /**
-   * Verwirft die Konfliktwarnung, ohne zu überschreiben: Der Status wechselt zurück
+   * Verwirft die Konfliktwarnung, ohne zu speichern: Der Status wechselt zurück
    * nach `idle`, die Datei bleibt unangetastet (Req 17.25).
    */
   dismissConflict(): void {

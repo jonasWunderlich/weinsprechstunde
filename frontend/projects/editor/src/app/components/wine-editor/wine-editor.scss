@@ -90,6 +90,18 @@
     }
   }
 
+  &__conflict-field {
+    border: 1px solid #e3c98f;
+    border-radius: 4px;
+    margin: 0 0 0.5rem;
+    padding: 0.4rem 0.6rem;
+
+    label {
+      display: block;
+      overflow-wrap: anywhere;
+    }
+  }
+
   &__conflict-actions {
     display: flex;
     gap: 0.5rem;

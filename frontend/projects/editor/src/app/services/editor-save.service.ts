@@ -2,6 +2,20 @@ import { Injectable, inject, signal } from '@angular/core';
 import { Wine, WineSchemaField } from '@weinsprechstunde/shared';
 import { ConflictError, FileSystemAccessService } from './file-system-access.service';
 import { mergeWineForSave } from '../models/wine-field-conversion';
+import {
+  ConflictChoice,
+  FieldConflict,
+  MergeResult,
+  applyConflictChoices,
+  mergeThreeWay,
+} from '../models/wine-merge';
+
+/** Meldung, wenn die Datei beim Speichern nicht mehr existiert (wie beim Öffnen). */
+export const FILE_MISSING_MESSAGE =
+  'Die Datei wurde nicht gefunden (verschoben, umbenannt oder entfernt). Bitte oben auf „Aktualisieren“ klicken, um die Liste neu einzulesen. Dieser Eintrag kann nicht gespeichert werden.';
+
+/** Maximale Wiederholungen, wenn die Datei zwischen Lesen und Schreiben erneut wechselt. */
+const MAX_WRITE_ATTEMPTS = 3;
 
 /** Diskreter Zustand des Speicherstatus-Indikators (Req 17.23/17.24). */
 export type SaveStatus = 'idle' | 'saving' | 'success' | 'error' | 'conflict';
@@ -34,6 +48,10 @@ interface Slot {
   queue: Promise<void>;
   /** Ergebnis des letzten Speichervorgangs, falls fehlgeschlagen. */
   failure: SaveFailure | null;
+  /** Wegen eines Feldkonflikts noch nicht gespeicherte (konvertierte) Feldwerte. */
+  unsaved: Record<string, unknown>;
+  /** Offener Feldkonflikt samt Plattenstand, auf dem das Merge-Ergebnis beruht. */
+  conflict: { result: MergeResult; diskLastModified: number } | null;
 }
 
 /**
@@ -45,10 +63,12 @@ interface Slot {
  *   500 ms nach der letzten Eingabe im jeweiligen Feld wird gespeichert (Req 17.21).
  * - **Typkonvertierung** der number-Felder und **Merge** schema-fremder Felder laufen
  *   über die Pure-Functions in {@link mergeWineForSave} (Req 17.22/17.27).
- * - **Konflikterkennung** über `File.lastModified`: Der Service merkt sich den
- *   Lade-Zeitstempel und reicht ihn an `writeJson` weiter; weicht die Datei ab, wirft
- *   der FileSystemAccessService einen {@link ConflictError}. Der Service setzt dann den
- *   Status `conflict` und speichert **nicht** ohne Bestätigung (Req 17.25).
+ * - **Konflikterkennung** über `File.lastModified` mit feldweisem Drei-Wege-Merge: Beim
+ *   Speichern wird die Datei erneut gelesen. Gleicher Zeitstempel wie zuletzt bekannt →
+ *   einfach speichern. Sonst werden Basis (letzter bekannter Plattenstand), lokaler und
+ *   aktueller Plattenstand per {@link mergeThreeWay} zusammengeführt; nur bei Feldern mit
+ *   abweichenden Änderungen auf beiden Seiten entsteht der Status `conflict`, den der
+ *   Benutzer je Feld über {@link resolveConflicts} entscheidet (Req 17.25).
  * - **Warteschlange:** Speichervorgänge eines Eintrags laufen nacheinander. Jeder baut
  *   auf dem Ergebnis des vorherigen auf (Wine-Objekt und Zeitstempel), so gehen bei
  *   fast gleichzeitigen Änderungen mehrerer Felder keine Änderungen verloren.
@@ -85,6 +105,16 @@ export class EditorSaveService {
   onSaved: ((path: string, wine: Wine, lastModified: number) => void) | null = null;
 
   /**
+   * Wird aufgerufen, wenn beim Speichern Feldwerte von der Platte übernommen wurden
+   * (Merge oder Konfliktwahl „Platte"), mit den Feldnamen und dem gespeicherten Objekt.
+   */
+  onMerged: ((path: string, fields: string[], wine: Wine) => void) | null = null;
+
+  private readonly _conflicts = signal<FieldConflict[]>([]);
+  /** Felder des offenen Konflikts (leer, wenn keiner offen ist). */
+  readonly conflicts = this._conflicts.asReadonly();
+
+  /**
    * Initialisiert den Service für einen konkreten Eintrag. Ausstehende Eingaben des
    * vorherigen Eintrags werden verworfen; vorher {@link flush} aufrufen, um sie zu sichern.
    *
@@ -102,7 +132,10 @@ export class EditorSaveService {
       lastModified,
       queue: Promise.resolve(),
       failure: null,
+      unsaved: {},
+      conflict: null,
     };
+    this._conflicts.set([]);
     this._state.set({ status: 'idle', error: null });
   }
 
@@ -115,6 +148,7 @@ export class EditorSaveService {
   deactivate(): void {
     this.clearTimers();
     this.slot = null;
+    this._conflicts.set([]);
     this._state.set({ status: 'idle', error: null });
   }
 
@@ -151,7 +185,7 @@ export class EditorSaveService {
   async saveFields(fieldValues: Record<string, unknown>): Promise<void> {
     const slot = this.slot;
     if (slot === null) return;
-    await this.enqueue(slot, () => this.write(slot, fieldValues, true));
+    await this.enqueue(slot, () => this.write(slot, fieldValues));
   }
 
   /**
@@ -169,25 +203,30 @@ export class EditorSaveService {
         values[field] = p.value;
       }
       this.pending.clear();
-      void this.enqueue(slot, () => this.write(slot, values, true));
+      void this.enqueue(slot, () => this.write(slot, values));
     }
     await slot.queue;
     return slot.failure;
   }
 
   /**
-   * Überschreibt die Datei trotz erkanntem Konflikt, nachdem der Benutzer die Warnung
-   * bestätigt hat (Req 17.25). Schreibt ohne Konfliktprüfung.
+   * Schließt einen offenen Feldkonflikt ab: je Konfliktfeld `local` (meine Version) oder
+   * `disk` (neue Version von der Platte). Fehlt eine Wahl, passiert nichts. Danach wird
+   * gespeichert (Req 17.25).
    */
-  async confirmOverwrite(fieldValues: Record<string, unknown>): Promise<void> {
+  async resolveConflicts(choices: Record<string, ConflictChoice>): Promise<void> {
     const slot = this.slot;
     if (slot === null) return;
-    await this.enqueue(slot, () => this.write(slot, fieldValues, false));
+    await this.enqueue(slot, () => this.resolve(slot, choices));
   }
 
   /** Setzt den Status zurück auf `idle` (z. B. nach verworfener Konfliktwarnung). */
   reset(): void {
-    if (this.slot) this.slot.failure = null;
+    if (this.slot) {
+      this.slot.failure = null;
+      this.slot.conflict = null;
+    }
+    this._conflicts.set([]);
     this._state.set({ status: 'idle', error: null });
   }
 
@@ -212,40 +251,119 @@ export class EditorSaveService {
   /**
    * Ein Speichervorgang. Baut auf `slot.current`/`slot.lastModified` des vorherigen
    * Vorgangs auf. Den sichtbaren Status setzt er nur, solange der Eintrag noch der
-   * aktuell geöffnete ist.
+   * aktuell geöffnete ist. Die Datei wird vorher erneut gelesen und bei abweichendem
+   * Zeitstempel feldweise zusammengeführt.
    */
-  private async write(
-    slot: Slot,
-    fieldValues: Record<string, unknown>,
-    checkConflict: boolean,
-  ): Promise<void> {
-    const next = mergeWineForSave(slot.current, slot.schema, fieldValues);
+  private async write(slot: Slot, fieldValues: Record<string, unknown>): Promise<void> {
+    const values = { ...slot.unsaved, ...fieldValues };
+    const local = mergeWineForSave(slot.current, slot.schema, values);
     const visible = (): boolean => this.slot === slot;
     if (visible()) this._state.set({ status: 'saving', error: null });
     try {
-      const newLastModified = await this.fsa.writeJson(
-        slot.path,
-        next,
-        checkConflict ? slot.lastModified : undefined,
-      );
-      // Erfolg: neuen Lade-Zeitstempel übernehmen, damit Folgespeicherungen nicht
-      // fälschlich als Konflikt gewertet werden.
-      slot.current = next;
-      slot.lastModified = newLastModified;
-      slot.failure = null;
-      if (visible()) this._state.set({ status: 'success', error: null });
-      this.onSaved?.(slot.path, next, newLastModified);
+      for (let attempt = 1; ; attempt++) {
+        let toWrite = local;
+        let fromDisk: string[] = [];
+        let expected = slot.lastModified;
+        const disk = await this.fsa.readJson(slot.path);
+        if (disk.lastModified !== slot.lastModified) {
+          const result = mergeThreeWay(slot.current, local, disk.wine);
+          if (result.conflicts.length > 0) {
+            this.openConflict(slot, values, result, disk.lastModified, visible());
+            return;
+          }
+          toWrite = result.merged;
+          fromDisk = result.fromDisk;
+          expected = disk.lastModified;
+        }
+        try {
+          const newLastModified = await this.fsa.writeJson(slot.path, toWrite, expected);
+          this.finishSave(slot, toWrite, newLastModified, fromDisk, visible());
+          return;
+        } catch (err) {
+          // Datei zwischen Lesen und Schreiben erneut verändert: noch einmal zusammenführen.
+          if (!(err instanceof ConflictError) || attempt >= MAX_WRITE_ATTEMPTS) throw err;
+        }
+      }
     } catch (err) {
-      if (checkConflict && err instanceof ConflictError) {
-        // Datei extern verändert — nicht ohne Bestätigung überschreiben (Req 17.25).
-        slot.failure = { path: slot.path, status: 'conflict', error: null };
-        if (visible()) this._state.set({ status: 'conflict', error: null });
+      this.failSave(slot, err, visible());
+    }
+  }
+
+  /** Schreibt das Ergebnis eines gelösten Feldkonflikts. */
+  private async resolve(slot: Slot, choices: Record<string, ConflictChoice>): Promise<void> {
+    const open = slot.conflict;
+    if (open === null) return;
+    if (!open.result.conflicts.every((c) => choices[c.field] !== undefined)) return;
+    const visible = (): boolean => this.slot === slot;
+    const final = applyConflictChoices(open.result, choices);
+    const fromDisk = [
+      ...open.result.fromDisk,
+      ...open.result.conflicts.filter((c) => choices[c.field] === 'disk').map((c) => c.field),
+    ];
+    if (visible()) this._state.set({ status: 'saving', error: null });
+    try {
+      const newLastModified = await this.fsa.writeJson(slot.path, final, open.diskLastModified);
+      this.finishSave(slot, final, newLastModified, fromDisk, visible());
+    } catch (err) {
+      if (err instanceof ConflictError) {
+        // Datei erneut verändert: Konflikte gegen den neuen Plattenstand neu bestimmen.
+        slot.conflict = null;
+        this._conflicts.set([]);
+        await this.write(slot, {});
       } else {
-        // Feldinhalte bleiben erhalten (Formular wird nicht zurückgesetzt, Req 17.24).
-        const error = err instanceof Error ? err.message : String(err);
-        slot.failure = { path: slot.path, status: 'error', error };
-        if (visible()) this._state.set({ status: 'error', error });
+        this.failSave(slot, err, visible());
       }
     }
+  }
+
+  private openConflict(
+    slot: Slot,
+    values: Record<string, unknown>,
+    result: MergeResult,
+    diskLastModified: number,
+    visible: boolean,
+  ): void {
+    slot.unsaved = values;
+    slot.conflict = { result, diskLastModified };
+    slot.failure = { path: slot.path, status: 'conflict', error: null };
+    if (visible) {
+      this._conflicts.set(result.conflicts);
+      this._state.set({ status: 'conflict', error: null });
+    }
+  }
+
+  private finishSave(
+    slot: Slot,
+    saved: Wine,
+    lastModified: number,
+    fromDisk: string[],
+    visible: boolean,
+  ): void {
+    // Erfolg: neuen Lade-Zeitstempel übernehmen, damit Folgespeicherungen nicht
+    // fälschlich als Konflikt gewertet werden.
+    slot.current = saved;
+    slot.lastModified = lastModified;
+    slot.failure = null;
+    slot.unsaved = {};
+    slot.conflict = null;
+    if (visible) {
+      this._conflicts.set([]);
+      this._state.set({ status: 'success', error: null });
+    }
+    if (fromDisk.length > 0) this.onMerged?.(slot.path, fromDisk, saved);
+    this.onSaved?.(slot.path, saved, lastModified);
+  }
+
+  private failSave(slot: Slot, err: unknown, visible: boolean): void {
+    // Feldinhalte bleiben erhalten (Formular wird nicht zurückgesetzt, Req 17.24).
+    const name = (err as { name?: string } | null)?.name;
+    const error =
+      name === 'NotFoundError'
+        ? FILE_MISSING_MESSAGE
+        : err instanceof Error
+          ? err.message
+          : String(err);
+    slot.failure = { path: slot.path, status: 'error', error };
+    if (visible) this._state.set({ status: 'error', error });
   }
 }

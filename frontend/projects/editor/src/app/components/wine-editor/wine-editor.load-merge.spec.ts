@@ -212,7 +212,7 @@ describe('WineEditor: frisch laden und Cache nach dem Speichern aktualisieren', 
       expect(onDisk.price).toBe(9.5);
     });
 
-    it('erkennt eine echte externe Änderung nach dem Öffnen weiterhin als Konflikt', async () => {
+    it('meldet bei abweichend geänderten Feldern einen Konflikt und überschreibt nichts', async () => {
       const c = await setup(files());
       c.select('a.json');
       await c.settle();
@@ -223,13 +223,35 @@ describe('WineEditor: frisch laden und Cache nach dem Speichern aktualisieren', 
       c.select('a.json');
       await c.settle();
 
-      c.disk.externalChange('a.json', { name: 'Alpha extern', price: 1 });
+      c.disk.externalChange('a.json', { name: 'Alpha extern', price: 9.5, year: 2000 });
       c.type('year', '2019');
       await c.settle(500);
 
       expect(conflictBanner(c.el)).not.toBeNull();
       // Nichts wurde still überschrieben.
-      expect(c.disk.wineOnDisk('a.json').name).toBe('Alpha extern');
+      expect(c.disk.wineOnDisk('a.json').year).toBe(2000);
+    });
+
+    it('führt nicht überlappende Änderungen zusammen und zeigt die Plattenfelder im Formular', async () => {
+      const c = await setup(files());
+      c.select('a.json');
+      await c.settle();
+
+      c.disk.externalChange('a.json', { name: 'Alpha extern', price: 5, tasting_date: '2024-01-02' });
+      c.type('year', '2019');
+      await c.settle(500);
+
+      expect(conflictBanner(c.el)).toBeNull();
+      expect(status(c.el)).toBe('Gespeichert');
+      expect(c.disk.wineOnDisk('a.json')).toMatchObject({ name: 'Alpha extern', year: 2019 });
+      expect(c.input('name').value).toBe('Alpha extern');
+      expect(c.input('year').value).toBe('2019');
+      const notice = c.el.querySelector('[data-testid="disk-notice"]');
+      expect(notice?.textContent).toContain('name');
+      // Cache folgt dem gespeicherten Stand.
+      const entry = c.state.entries().find((e) => e.path === 'a.json')!;
+      expect(entry.wine?.name).toBe('Alpha extern');
+      expect(entry.lastModified).toBe(c.disk.mtime('a.json'));
     });
 
     it('zeigt beim Öffnen eine extern geänderte Datei im frischen Stand', async () => {
@@ -383,21 +405,65 @@ describe('WineEditor: frisch laden und Cache nach dem Speichern aktualisieren', 
       expect(conflictBanner(c.el)).toBeNull();
     });
 
-    it('aktualisiert den Cache auch nach „Überschreiben"', async () => {
+    it('löst einen Feldkonflikt je Feld im Dialog und aktualisiert den Cache', async () => {
       const c = await setup(files());
       c.select('a.json');
       await c.settle();
-      c.disk.externalChange('a.json', { name: 'Alpha extern' });
+      c.disk.externalChange('a.json', { name: 'Alpha extern', tasting_date: '2024-01-02' });
       c.type('price', '3');
       await c.settle(500);
       expect(conflictBanner(c.el)).not.toBeNull();
 
-      await c.fixture.componentInstance.confirmOverwrite();
+      // Nur das Konfliktfeld ist gelistet, ohne Vorauswahl; Speichern ist gesperrt.
+      const fieldSets = c.el.querySelectorAll('[data-conflict-field]');
+      expect(fieldSets).toHaveLength(1);
+      expect(fieldSets[0].getAttribute('data-conflict-field')).toBe('price');
+      expect(c.el.querySelectorAll('[data-conflict-field] input:checked')).toHaveLength(0);
+      const resolve = c.el.querySelector('[data-testid="conflict-resolve"]') as HTMLButtonElement;
+      expect(resolve.disabled).toBe(true);
+
+      (c.el.querySelector('[data-testid="conflict-choose-local"]') as HTMLInputElement).click();
+      c.fixture.detectChanges();
+      expect(resolve.disabled).toBe(false);
+      resolve.click();
       await c.settle();
+
+      expect(conflictBanner(c.el)).toBeNull();
+      expect(c.disk.wineOnDisk('a.json')).toMatchObject({ name: 'Alpha extern', price: 3 });
       const entry = c.state.entries().find((e) => e.path === 'a.json')!;
       expect(entry.lastModified).toBe(c.disk.mtime('a.json'));
       expect(entry.wine?.price).toBe(3);
       expect(c.wineData.wines().includes(entry.wine as Wine)).toBe(true);
+    });
+
+    it('übernimmt bei Wahl „Platte" den Plattenwert ins Formular', async () => {
+      const c = await setup(files());
+      c.select('a.json');
+      await c.settle();
+      c.disk.externalChange('a.json', { name: 'Alpha', price: 8, tasting_date: '2024-01-02' });
+      c.type('price', '3');
+      await c.settle(500);
+
+      (c.el.querySelector('[data-testid="conflict-choose-disk"]') as HTMLInputElement).click();
+      c.fixture.detectChanges();
+      (c.el.querySelector('[data-testid="conflict-resolve"]') as HTMLButtonElement).click();
+      await c.settle();
+
+      expect(c.disk.wineOnDisk('a.json').price).toBe(8);
+      expect(c.input('price').value).toBe('8');
+      expect(conflictBanner(c.el)).toBeNull();
+    });
+
+    it('warnt beim Speichern, wenn die Datei nicht mehr existiert', async () => {
+      const c = await setup(files());
+      c.select('a.json');
+      await c.settle();
+      c.disk.remove('a.json');
+      c.type('price', '3');
+      await c.settle(500);
+
+      expect(status(c.el)).toContain('nicht gefunden');
+      expect(c.disk.writes).toHaveLength(0);
     });
   });
 

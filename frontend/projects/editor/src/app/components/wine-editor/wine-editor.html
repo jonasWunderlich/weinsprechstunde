@@ -125,17 +125,58 @@
       </div>
     }
 
+    @if (diskNotice().length > 0) {
+      <div class="wine-editor__status" role="status" data-testid="disk-notice">
+        Beim Speichern von der Platte übernommen: {{ diskNotice().join(', ') }}.
+        <button type="button" (click)="dismissDiskNotice()" data-testid="disk-notice-dismiss">
+          Schließen
+        </button>
+      </div>
+    }
+
     @if (s.status === 'conflict') {
-      <div class="wine-editor__conflict" data-testid="conflict-banner">
-        <p>
-          Diese Datei wurde seit dem Laden extern verändert (z. B. durch die Cloud-Synchronisation).
-          Soll der aktuelle Stand trotzdem überschrieben werden?
+      <div class="wine-editor__conflict" role="alertdialog" aria-labelledby="conflict-title" data-testid="conflict-banner">
+        <p id="conflict-title">
+          Diese Datei wurde extern verändert (z. B. durch die Cloud-Synchronisation). Bei diesen
+          Feldern unterscheiden sich beide Versionen. Bitte je Feld eine Version wählen.
         </p>
+        @for (c of conflicts(); track c.field) {
+          <fieldset class="wine-editor__conflict-field" [attr.data-conflict-field]="c.field">
+            <legend>{{ c.field }}</legend>
+            <label>
+              <input
+                type="radio"
+                [name]="'conflict-' + c.field"
+                [checked]="conflictChoices()[c.field] === 'local'"
+                (change)="chooseConflict(c.field, 'local')"
+                data-testid="conflict-choose-local"
+              />
+              Meine Version: {{ conflictValue(c.local) }}
+            </label>
+            <label>
+              <input
+                type="radio"
+                [name]="'conflict-' + c.field"
+                [checked]="conflictChoices()[c.field] === 'disk'"
+                (change)="chooseConflict(c.field, 'disk')"
+                data-testid="conflict-choose-disk"
+              />
+              Neue Version von der Platte: {{ conflictValue(c.disk) }}
+            </label>
+          </fieldset>
+        }
         <div class="wine-editor__conflict-actions">
-          <button type="button" (click)="confirmOverwrite()" data-testid="conflict-overwrite">
-            Überschreiben
+          <button
+            type="button"
+            [disabled]="!allConflictsChosen()"
+            (click)="resolveConflicts()"
+            data-testid="conflict-resolve"
+          >
+            Speichern
           </button>
-          <button type="button" (click)="dismissConflict()">Abbrechen</button>
+          <button type="button" (click)="dismissConflict()" data-testid="conflict-dismiss">
+            Abbrechen
+          </button>
         </div>
       </div>
     }

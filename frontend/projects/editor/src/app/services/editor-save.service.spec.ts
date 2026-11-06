@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TestBed } from '@angular/core/testing';
+import fc from 'fast-check';
 import { Wine, WineSchemaField } from '@weinsprechstunde/shared';
 import { EditorSaveService } from './editor-save.service';
 import { ConflictError, FileSystemAccessService } from './file-system-access.service';
@@ -18,6 +19,19 @@ class FakeFsa {
   writes: { path: string; wine: Wine }[] = [];
   /** Aktueller „Dateizustand" auf der Platte. */
   currentLastModified = 100;
+  /** Aktueller Inhalt auf der Platte. */
+  disk: Wine = { name: 'Alpha' };
+  /** Wenn gesetzt, wirft `readJson` diesen Fehler (z. B. NotFoundError). */
+  readFailWith: Error | null = null;
+  /** Externe Änderung: neuer Inhalt und neuer Zeitstempel. */
+  externalChange(wine: Wine, lastModified = this.currentLastModified + 100): void {
+    this.disk = structuredClone(wine);
+    this.currentLastModified = lastModified;
+  }
+  async readJson(): Promise<{ wine: Wine; lastModified: number }> {
+    if (this.readFailWith) throw this.readFailWith;
+    return { wine: structuredClone(this.disk), lastModified: this.currentLastModified };
+  }
   /** Wenn gesetzt, wirft der nächste Schreibvorgang diesen Fehler (Nicht-Konflikt). */
   failWith: Error | null = null;
   /** Hält den nächsten Schreibvorgang an, bis der Callback aufgerufen wird. */
@@ -42,6 +56,7 @@ class FakeFsa {
       throw new ConflictError(expectedLastModified, this.currentLastModified);
     }
     this.writes.push({ path, wine: structuredClone(wine) });
+    this.disk = structuredClone(wine);
     this.currentLastModified += 1;
     return this.currentLastModified;
   }
@@ -114,34 +129,130 @@ describe('EditorSaveService', () => {
     });
   });
 
-  describe('Konflikterkennung über File.lastModified (Req 17.25)', () => {
-    it('setzt Status "conflict" und überschreibt NICHT, wenn die Datei extern verändert wurde', async () => {
+  describe('Feldweiser Merge statt Konflikt (Req 17.25)', () => {
+    it('speichert ohne Merge, wenn der Zeitstempel unverändert ist', async () => {
       const { save, fsa } = setup();
-      // Externe Änderung simulieren: Zeitstempel der „Platte" weicht vom Lade-Wert ab.
-      fsa.currentLastModified = 200;
+      const merged = vi.fn();
+      save.onMerged = merged;
       await save.saveField('name', 'Beta');
-      expect(save.state().status).toBe('conflict');
-      expect(fsa.writes.length).toBe(0); // nicht überschrieben
+      expect(save.state().status).toBe('success');
+      expect(merged).not.toHaveBeenCalled();
     });
 
-    it('überschreibt nach Bestätigung trotz Konflikt (confirmOverwrite)', async () => {
+    it('übernimmt bei bloßer Zeitstempelabweichung (gleicher Inhalt) und speichert', async () => {
       const { save, fsa } = setup();
-      fsa.currentLastModified = 200;
+      fsa.externalChange({ name: 'Alpha' });
       await save.saveField('name', 'Beta');
-      expect(save.state().status).toBe('conflict');
-      await save.confirmOverwrite({ name: 'Beta' });
       expect(save.state().status).toBe('success');
-      expect(fsa.writes.length).toBe(1);
       expect(fsa.writes[0].wine.name).toBe('Beta');
     });
 
-    it('nach erfolgreichem Save gilt kein erneuter Konflikt (Zeitstempel wird übernommen)', async () => {
+    it('übernimmt nur auf der Platte geänderte Felder (inkl. schema-fremder) und meldet sie', async () => {
       const { save, fsa } = setup();
+      const merged = vi.fn();
+      const saved = vi.fn();
+      save.onMerged = merged;
+      save.onSaved = saved;
+      fsa.externalChange({ name: 'Alpha', year: 1999, extra: 'x' });
+      await save.saveField('price', 5);
+      expect(save.state().status).toBe('success');
+      expect(fsa.writes[0].wine).toEqual({ name: 'Alpha', year: 1999, extra: 'x', price: 5 });
+      expect(merged).toHaveBeenCalledTimes(1);
+      expect(merged.mock.calls[0][0]).toBe('a.json');
+      expect([...merged.mock.calls[0][1]].sort()).toEqual(['extra', 'year']);
+      // Cache-Callback bekommt den Merge-Stand und den Zeitstempel aus writeJson.
+      expect(saved).toHaveBeenCalledWith('a.json', fsa.writes[0].wine, fsa.currentLastModified);
+      expect(save.loadedLastModified).toBe(fsa.currentLastModified);
+    });
+
+    it('wertet gleich geänderte Felder nicht als Konflikt (Komma-Eingabe 6,99 = Platte 6.99)', async () => {
+      const { save, fsa } = setup();
+      fsa.externalChange({ name: 'Alpha', price: 6.99 });
+      await save.saveField('price', 6.99);
+      expect(save.state().status).toBe('success');
+      expect(fsa.writes[0].wine.price).toBe(6.99);
+    });
+
+    it('meldet nur bei abweichend geänderten Feldern einen Konflikt und schreibt nicht', async () => {
+      const { save, fsa } = setup();
+      fsa.externalChange({ name: 'Gamma', year: 2000 });
+      await save.saveFields({ name: 'Beta', year: 2000 });
+      expect(save.state().status).toBe('conflict');
+      expect(save.conflicts()).toEqual([{ field: 'name', local: 'Beta', disk: 'Gamma' }]);
+      expect(fsa.writes.length).toBe(0);
+    });
+
+    it('speichert nach Wahl je Feld: meine Version', async () => {
+      const { save, fsa } = setup();
+      fsa.externalChange({ name: 'Gamma', year: 1999 });
       await save.saveField('name', 'Beta');
+      await save.resolveConflicts({ name: 'local' });
       expect(save.state().status).toBe('success');
-      await save.saveField('name', 'Gamma');
-      expect(save.state().status).toBe('success');
-      expect(fsa.writes.length).toBe(2);
+      expect(save.conflicts()).toEqual([]);
+      expect(fsa.writes[0].wine).toEqual({ name: 'Beta', year: 1999 });
+    });
+
+    it('speichert nach Wahl je Feld: Platte, und meldet das Feld über onMerged', async () => {
+      const { save, fsa } = setup();
+      const merged = vi.fn();
+      save.onMerged = merged;
+      fsa.externalChange({ name: 'Gamma' });
+      await save.saveField('name', 'Beta');
+      await save.resolveConflicts({ name: 'disk' });
+      expect(fsa.writes[0].wine.name).toBe('Gamma');
+      expect(merged).toHaveBeenCalledWith('a.json', ['name'], fsa.writes[0].wine);
+      expect(save.loadedLastModified).toBe(fsa.currentLastModified);
+    });
+
+    it('speichert nicht, solange nicht jedes Konfliktfeld gewählt ist', async () => {
+      const { save, fsa } = setup();
+      fsa.externalChange({ name: 'Gamma', year: 1 });
+      await save.saveFields({ name: 'Beta', year: 2 });
+      await save.resolveConflicts({ name: 'local' });
+      expect(fsa.writes.length).toBe(0);
+      expect(save.state().status).toBe('conflict');
+      await save.resolveConflicts({ name: 'local', year: 'disk' });
+      expect(fsa.writes[0].wine).toEqual({ name: 'Beta', year: 1 });
+    });
+
+    it('behält bei mehreren Konflikt-Saves alle lokalen Änderungen', async () => {
+      const { save, fsa } = setup();
+      fsa.externalChange({ name: 'Gamma', year: 1 });
+      await save.saveField('name', 'Beta');
+      await save.saveField('year', 2);
+      expect(save.conflicts().map((c) => c.field).sort()).toEqual(['name', 'year']);
+      await save.resolveConflicts({ name: 'local', year: 'local' });
+      expect(fsa.writes[0].wine).toEqual({ name: 'Beta', year: 2 });
+    });
+
+    it('bestimmt Konflikte neu, wenn die Datei während der Entscheidung erneut wechselt', async () => {
+      const { save, fsa } = setup();
+      fsa.externalChange({ name: 'Gamma' });
+      await save.saveField('name', 'Beta');
+      fsa.externalChange({ name: 'Delta' });
+      await save.resolveConflicts({ name: 'local' });
+      expect(save.state().status).toBe('conflict');
+      expect(save.conflicts()).toEqual([{ field: 'name', local: 'Beta', disk: 'Delta' }]);
+      expect(fsa.writes.length).toBe(0);
+    });
+
+    it('Abbrechen verwirft den Konflikt ohne Schreiben', async () => {
+      const { save, fsa } = setup();
+      fsa.externalChange({ name: 'Gamma' });
+      await save.saveField('name', 'Beta');
+      save.reset();
+      expect(save.state().status).toBe('idle');
+      expect(save.conflicts()).toEqual([]);
+      expect(fsa.writes.length).toBe(0);
+    });
+
+    it('warnt wie beim Öffnen, wenn die Datei beim Speichern nicht mehr existiert', async () => {
+      const { save, fsa } = setup();
+      fsa.readFailWith = new DOMException('weg', 'NotFoundError');
+      await save.saveField('name', 'Beta');
+      expect(save.state().status).toBe('error');
+      expect(save.state().error).toContain('nicht gefunden');
+      expect(fsa.writes.length).toBe(0);
     });
   });
 
@@ -209,7 +320,7 @@ describe('EditorSaveService', () => {
 
     it('liefert den Fehlschlag bei Konflikt und überschreibt nicht', async () => {
       const { save, fsa } = setup();
-      fsa.currentLastModified = 200;
+      fsa.externalChange({ name: 'Alpha', price: 9 });
       save.scheduleFieldSave('price', 3);
       const failure = await save.flush();
       expect(failure).toEqual({ path: 'a.json', status: 'conflict', error: null });
@@ -236,6 +347,64 @@ describe('EditorSaveService', () => {
       expect(await flushed).toBeNull();
       expect(fsa.writes[0].path).toBe('a.json');
       expect(save.state().status).toBe('idle');
+    });
+  });
+
+  describe('Property 17: Konflikt-Erkennung beim Speichern (Req 17.25)', () => {
+    const name = fc.constantFrom('A', 'B', 'C');
+    const num = fc.integer({ min: 1, max: 3 });
+    const opt = <T>(a: fc.Arbitrary<T>): fc.Arbitrary<T | undefined> => fc.option(a, { nil: undefined });
+    const wineArb = fc
+      .record({ name: opt(name), year: opt(num), price: opt(num), extra: opt(name) })
+      .map((r) => Object.fromEntries(Object.entries(r).filter(([, v]) => v !== undefined)) as Wine);
+    const editArb = fc
+      .record({ name: opt(name), year: opt(num), price: opt(num) })
+      .map((r) => Object.fromEntries(Object.entries(r).filter(([, v]) => v !== undefined)));
+
+    it('speichert bei gleichem Zeitstempel; sonst nur bei Feldkonflikten kein Schreiben', async () => {
+      await fc.assert(
+        fc.asyncProperty(
+          wineArb,
+          wineArb,
+          editArb,
+          fc.boolean(),
+          async (base, diskWine, edits, sameStamp) => {
+            TestBed.resetTestingModule();
+            const fsa = new FakeFsa();
+            TestBed.configureTestingModule({
+              providers: [{ provide: FileSystemAccessService, useValue: fsa }, EditorSaveService],
+            });
+            const save = TestBed.inject(EditorSaveService);
+            save.init('a.json', base, 100, SCHEMA);
+            const disk = sameStamp ? base : diskWine;
+            if (sameStamp) fsa.disk = structuredClone(base);
+            else fsa.externalChange(diskWine);
+            await save.saveFields(edits);
+
+            const expected: Record<string, unknown> = {};
+            let conflict = false;
+            for (const k of ['name', 'year', 'price', 'extra']) {
+              const b = (base as Record<string, unknown>)[k];
+              const d = (disk as Record<string, unknown>)[k];
+              const l = k in edits ? (edits as Record<string, unknown>)[k] : b;
+              const lc = l !== b;
+              const dc = d !== b;
+              if (lc && dc && l !== d) conflict = true;
+              const v = lc ? l : d;
+              if (v !== undefined) expected[k] = v;
+            }
+            if (conflict) {
+              expect(save.state().status).toBe('conflict');
+              expect(fsa.writes).toHaveLength(0);
+            } else {
+              expect(save.state().status).toBe('success');
+              expect(fsa.writes).toHaveLength(1);
+              expect(fsa.writes[0].wine).toEqual(expected);
+            }
+          },
+        ),
+        { numRuns: 100 },
+      );
     });
   });
 });
