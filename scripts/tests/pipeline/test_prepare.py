@@ -58,6 +58,22 @@ def test_rename_renames_json_image_and_audio(tmp_path):
     assert data["audio"] == "2021-10-12-mein-wein.mp3"
 
 
+def test_rename_renames_video(tmp_path):
+    import_dir = tmp_path / "import"
+    import_dir.mkdir()
+    write_json(
+        import_dir / "orig.json",
+        {"name": "Mein Wein", "tasting_date": "2021-10-12", "video": "orig.mp4"},
+    )
+    (import_dir / "orig.mp4").write_bytes(b"video")
+    config = make_config(import_dir=str(import_dir), scaffold_mode=False)
+    wi.phase_prepare(config, default_schema())
+    assert (import_dir / "2021-10-12-mein-wein.mp4").exists()
+    assert not (import_dir / "orig.mp4").exists()
+    data = read(import_dir / "2021-10-12-mein-wein.json")
+    assert data["video"] == "2021-10-12-mein-wein.mp4"
+
+
 def test_rename_collision_skips_with_summary(tmp_path, capsys):
     import_dir = tmp_path / "import"
     import_dir.mkdir()

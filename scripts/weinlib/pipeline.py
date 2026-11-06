@@ -210,7 +210,7 @@ def phase_prepare(config: Config, schema: list[SchemaField]) -> None:
 
 
 def rename_file_group(json_file: Path, new_stem: str, data: dict) -> int:
-    """JSON + Bild + Audio auf neuen Basisnamen umbenennen.
+    """JSON + Bild + Audio + Video auf neuen Basisnamen umbenennen.
 
     Gibt die Anzahl übersprungener Umbenennungen zurück (Zieldatei existierte
     bereits). Diese Kollisionen werden NICHT pro Datei geloggt – die rufende
@@ -218,7 +218,7 @@ def rename_file_group(json_file: Path, new_stem: str, data: dict) -> int:
     ruhig bleibt.
     """
     skipped = 0
-    for field_name in ("image", "audio"):
+    for field_name in ("image", "audio", "video"):
         if not data.get(field_name):
             continue
         old_path = json_file.parent / data[field_name]
