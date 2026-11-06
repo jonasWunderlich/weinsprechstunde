@@ -27,9 +27,9 @@ describe('NavComponent', () => {
     expect(text).toContain('Weinsprechstunde');
   });
 
-  it('goHome ruft clearAllFilters und navigiert auf /', () => {
+  it('navigateTo ruft clearAllFilters und navigiert auf /', () => {
     const { c, fsMock, router } = setup();
-    c.goHome();
+    c.navigateTo('/');
     expect(fsMock.clearAllFilters).toHaveBeenCalled();
     expect(router.navigate).toHaveBeenCalledWith(['/']);
   });
