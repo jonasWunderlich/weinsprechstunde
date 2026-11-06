@@ -34,8 +34,13 @@ jobs:
           WEINSPRECHSTUNDE_DEPLOY_PASSWORD: ${{ secrets.WEINSPRECHSTUNDE_DEPLOY_PASSWORD }}
         run: python scripts/weinimport.py prepare && python scripts/weinimport.py export && python scripts/weinimport.py image-export
 
-      - name: Build Angular
+      - name: Build Angular (Weinliste)
         run: npm run build
+        working-directory: frontend
+      # Editor wird immer gebaut; deployt wird er nur, wenn deploy.remote_editor_path
+      # in der Config gesetzt ist (leer = Editor-Deploy übersprungen).
+      - name: Build Angular (Editor)
+        run: npm run build:editor
         working-directory: frontend
 
       - name: Deploy to server
