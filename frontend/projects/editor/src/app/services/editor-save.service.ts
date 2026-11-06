@@ -58,6 +58,24 @@ export class EditorSaveService {
   debounceMs = 500;
 
   /**
+   * Wird nach jedem erfolgreichen Schreiben aufgerufen (Auto-Save und Überschreiben) mit
+   * dem geschriebenen Objekt und dem `lastModified`-Rückgabewert von `writeJson`. Der
+   * Aufrufer hält damit seinen Cache aktuell (Req 17.6).
+   */
+  onSaved: ((path: string, wine: Wine, lastModified: number) => void) | null = null;
+
+  /**
+   * Beendet die Bindung an den aktuellen Eintrag: ausstehende Timer werden verworfen,
+   * weitere Speichervorgänge sind unmöglich, bis wieder {@link init} aufgerufen wird
+   * (z. B. während des frischen Lesens oder wenn die Datei nicht lesbar ist).
+   */
+  deactivate(): void {
+    this.clearTimers();
+    this.path = null;
+    this._state.set({ status: 'idle', error: null });
+  }
+
+  /**
    * Initialisiert den Service für einen konkreten Eintrag.
    *
    * @param path         relativer JSON-Pfad im freigegebenen Ordner.
@@ -104,16 +122,18 @@ export class EditorSaveService {
    * steuern den Speicherstatus (Req 17.23/17.24/17.25).
    */
   async saveFields(fieldValues: Record<string, unknown>): Promise<void> {
-    if (this.path === null) return;
+    const path = this.path;
+    if (path === null) return;
     const next = mergeWineForSave(this.current, this.schema, fieldValues);
     this._state.set({ status: 'saving', error: null });
     try {
-      const newLastModified = await this.fsa.writeJson(this.path, next, this.lastModified);
+      const newLastModified = await this.fsa.writeJson(path, next, this.lastModified);
       // Erfolg: neuen Lade-Zeitstempel übernehmen, damit Folgespeicherungen nicht
       // fälschlich als Konflikt gewertet werden.
       this.current = next;
       this.lastModified = newLastModified;
       this._state.set({ status: 'success', error: null });
+      this.onSaved?.(path, next, newLastModified);
     } catch (err) {
       if (err instanceof ConflictError) {
         // Datei extern verändert — nicht ohne Bestätigung überschreiben (Req 17.25).
@@ -134,14 +154,16 @@ export class EditorSaveService {
    * schreibt ohne Konfliktprüfung.
    */
   async confirmOverwrite(fieldValues: Record<string, unknown>): Promise<void> {
-    if (this.path === null) return;
+    const path = this.path;
+    if (path === null) return;
     const next = mergeWineForSave(this.current, this.schema, fieldValues);
     this._state.set({ status: 'saving', error: null });
     try {
-      const newLastModified = await this.fsa.writeJson(this.path, next);
+      const newLastModified = await this.fsa.writeJson(path, next);
       this.current = next;
       this.lastModified = newLastModified;
       this._state.set({ status: 'success', error: null });
+      this.onSaved?.(path, next, newLastModified);
     } catch (err) {
       this._state.set({
         status: 'error',

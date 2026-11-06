@@ -33,6 +33,12 @@ class FakeFsa {
     this.writes.push({ path, wine });
     return 1;
   }
+  /** Frisches Lesen beim Öffnen: liefert den Stand des letzten Scans. */
+  async readJson(path: string): Promise<{ wine: Wine; lastModified: number }> {
+    const entry = this.scanResult.entries.find((e) => e.path === path);
+    if (!entry?.wine) throw new DOMException('not found', 'NotFoundError');
+    return { wine: entry.wine, lastModified: entry.lastModified };
+  }
   async listMedia(): Promise<[]> {
     return [];
   }
@@ -176,6 +182,9 @@ describe('WineEditorComponent', () => {
       const entries = [wineEntry('a.json', { name: 'Château Alpha' })];
       const { fixture, state } = await render(entries);
       state.select(state.listItems()[0]);
+      fixture.detectChanges();
+      // Frisches Lesen abwarten: bis dahin ist das Formular read-only.
+      await new Promise((resolve) => setTimeout(resolve, 0));
       fixture.detectChanges();
       const el = fixture.nativeElement as HTMLElement;
       // Vor dem Klick: kein Dialog.

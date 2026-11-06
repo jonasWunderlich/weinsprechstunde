@@ -250,6 +250,27 @@ export class EditorStateService {
     }
   }
 
+  /**
+   * Ersetzt den Cache-Eintrag eines angelegten Weins durch einen bekannten Stand (nach
+   * Auto-Save/Überschreiben oder nach frischem Lesen von der Platte) ohne erneuten Scan
+   * (Req 17.6). `lastModified` muss der Rückgabewert von `writeJson`/`readJson` sein, nie
+   * „jetzt".
+   *
+   * `wine` landet als **dasselbe Objekt** in `_entries` und in `wineData.wines`, denn die
+   * Liste verbindet beide über Objektidentität (`buildEditorList`). Setzt weder Auswahl
+   * noch Formular zurück; der WineEditor initialisiert nur bei Pfadwechsel neu.
+   * Unbekannter Pfad (z. B. inzwischen weg gescannt): keine Wirkung.
+   */
+  applyEntryState(path: string, wine: Wine, lastModified: number): void {
+    const current = this._entries();
+    const index = current.findIndex((e) => e.path === path);
+    if (index === -1) return;
+    const next = current.slice();
+    next[index] = { ...current[index], wine, broken: false, lastModified };
+    this._entries.set(next);
+    this.wineData.wines.set(next.filter((e) => e.wine !== null && !e.broken).map((e) => e.wine!));
+  }
+
   /** Setzt alle attributbasierten Filter zurück (delegiert an den FilterService). */
   clearFilters(): void {
     this.filter.clearAllFilters();

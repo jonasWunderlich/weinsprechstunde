@@ -473,4 +473,38 @@ describe('EditorStateService', () => {
       expect(state.selectedId()).toBe('a.json');
     });
   });
+
+  describe('applyEntryState (Cache nach Speichern, Req 17.6)', () => {
+    it('ersetzt Eintrag und Wine-Daten mit demselben Objekt, ohne Scan und ohne Auswahlwechsel', async () => {
+      const { state, fsa } = setup({
+        entries: [wineEntry('a.json', { name: 'Alpha' }), wineEntry('b.json', { name: 'Beta' })],
+        images: [],
+      });
+      await state.refresh();
+      state.select(state.listItems().find((i) => i.id === 'a.json') ?? null);
+      const scans = fsa.scanCalls;
+      const saved: Wine = { name: 'Alpha neu', price: 3 };
+
+      state.applyEntryState('a.json', saved, 42);
+
+      const entry = state.entries().find((e) => e.path === 'a.json')!;
+      expect(entry.wine).toBe(saved);
+      expect(entry.lastModified).toBe(42);
+      expect(state.wines().includes(saved)).toBe(true);
+      expect(state.wines()).toHaveLength(2);
+      expect(state.selectedId()).toBe('a.json');
+      expect(state.listItems().map((i) => (i.kind === 'created' ? i.wine?.name : null))).toContain(
+        'Alpha neu',
+      );
+      expect(fsa.scanCalls).toBe(scans);
+    });
+
+    it('ignoriert einen unbekannten Pfad', async () => {
+      const { state } = setup({ entries: [wineEntry('a.json', { name: 'Alpha' })], images: [] });
+      await state.refresh();
+      const before = state.entries();
+      state.applyEntryState('x.json', { name: 'X' }, 1);
+      expect(state.entries()).toBe(before);
+    });
+  });
 });

@@ -5,6 +5,7 @@ import {
   effect,
   inject,
   signal,
+  untracked,
 } from '@angular/core';
 import { Wine, WineSchemaField, distinctValuesForField, isPresent } from '@weinsprechstunde/shared';
 import { EditorStateService } from '../../services/editor-state.service';
@@ -87,6 +88,24 @@ export class WineEditorComponent {
   });
 
   /**
+   * Pfad des geöffneten angelegten Eintrags. Ändert sich nur beim Wechsel der Auswahl,
+   * nicht bei Cache-Aktualisierungen nach dem Speichern: Der Lade-Effekt hängt daran und
+   * setzt dadurch das Formular bei einem Cache-Update nicht zurück.
+   */
+  private readonly createdPath = computed<string | null>(
+    () => this.created()?.entry.path ?? null,
+  );
+
+  /** `true`, solange der Stand frisch von der Platte gelesen wird (Formular read-only). */
+  readonly loading = signal(false);
+
+  /** Lesefehler (Datei fehlt, JSON defekt): ersetzt das Formular durch eine Warnung. */
+  readonly loadError = signal<string | null>(null);
+
+  /** Zähler der Öffnungsvorgänge: nur die jüngste Antwort gilt (latest-wins). */
+  private loadToken = 0;
+
+  /**
    * `true`, wenn ein unbekannter Wein als Entwurf geöffnet ist (Bild ohne JSON). Dann
    * zeigt der Editor das vollständige Formular, schreibt aber nichts, solange kein Name
    * eingetragen ist (neuer Flow).
@@ -151,35 +170,91 @@ export class WineEditorComponent {
   );
 
   constructor() {
-    // Bei jedem Eintragswechsel: Save-Service initialisieren und Formular mit den
-    // geladenen Werten befüllen (Req 17.9). Defekte JSONs sind nicht auswählbar, daher
-    // erreicht uns hier immer ein gültiges Wine-Objekt.
+    // Erfolgreiche Speichervorgänge halten den Scan-Cache aktuell (Req 17.6).
+    this.save.onSaved = (path, wine, lastModified) =>
+      this.state.applyEntryState(path, wine, lastModified);
+
+    // Bei jedem Wechsel des geöffneten Eintrags (nur bei Pfadwechsel, nicht bei
+    // Cache-Updates): zuerst den Cache-Stand read-only zeigen, dann frisch von der Platte
+    // lesen und erst danach den Save-Service initialisieren (Req 17.9).
     effect(() => {
       // Entwurf (unbekannter Wein): vollständiges Formular, vorbefüllt mit Bild und
       // (asynchron geladenem) EXIF-Datum; es wird nichts geschrieben, bis ein Name da ist.
       if (this.isDraft()) {
         const img = this.draftImage();
         const date = this.state.draftTastingDate();
+        untracked(() => this.releaseEntry());
         this.loadDraft(img ? img.name : '', date);
         return;
       }
-      const item = this.created();
-      if (!item || !item.wine) {
-        this.values.set({});
-        this.extraFields.set([]);
-        return;
-      }
-      this.loadEntry(item);
+      const path = this.createdPath();
+      const schema = this.wineData.schema();
+      untracked(() => {
+        if (path === null) {
+          this.releaseEntry();
+          this.values.set({});
+          this.extraFields.set([]);
+          return;
+        }
+        this.openEntry(path, schema);
+      });
     });
   }
 
-  // ── Formular-Aufbau ─────────────────────────────────────────────────────────
+  // ── Laden und Formular-Aufbau ───────────────────────────────────────────────
 
-  private loadEntry(item: CreatedListItem): void {
-    const wine = item.wine as Wine;
-    const schema = this.wineData.schema();
-    this.save.init(item.entry.path, wine, item.entry.lastModified, schema);
+  /** Löst die Bindung an einen angelegten Eintrag (Entwurf oder keine Auswahl). */
+  private releaseEntry(): void {
+    this.loadToken++;
+    this.save.deactivate();
+    this.loading.set(false);
+    this.loadError.set(null);
+  }
 
+  /**
+   * Öffnet einen angelegten Eintrag: zeigt sofort den Cache-Stand (read-only) und liest
+   * parallel frisch von der Platte. Erst danach wird das Formular mit dem frischen Stand
+   * ersetzt, der Save-Service mit dessen `lastModified` initialisiert und das Formular
+   * freigegeben. Antworten früherer Öffnungsvorgänge werden verworfen.
+   */
+  private openEntry(path: string, schema: WineSchemaField[]): void {
+    const token = ++this.loadToken;
+    const item = this.created();
+    this.save.deactivate();
+    this.loadError.set(null);
+    this.loading.set(true);
+    if (item?.wine) this.showWine(item.wine, schema);
+    void this.loadFresh(path, schema, token, item?.entry.lastModified ?? null);
+  }
+
+  private async loadFresh(
+    path: string,
+    schema: WineSchemaField[],
+    token: number,
+    cachedLastModified: number | null,
+  ): Promise<void> {
+    try {
+      const fresh = await this.fsa.readJson(path);
+      if (token !== this.loadToken) return;
+      if (!fresh.wine || typeof fresh.wine !== 'object' || Array.isArray(fresh.wine)) {
+        throw new SyntaxError('kein JSON-Objekt');
+      }
+      this.save.init(path, fresh.wine, fresh.lastModified, schema);
+      this.showWine(fresh.wine, schema);
+      // Liste an den frisch gelesenen Stand angleichen (setzt das Formular nicht zurück).
+      if (fresh.lastModified !== cachedLastModified) {
+        this.state.applyEntryState(path, fresh.wine, fresh.lastModified);
+      }
+      this.loading.set(false);
+    } catch (err) {
+      if (token !== this.loadToken) return;
+      this.loadError.set(describeLoadError(err));
+      this.loading.set(false);
+    }
+  }
+
+  /** Befüllt das Formular aus einem Wine-Objekt (Schema-Felder und schema-fremde Felder). */
+  private showWine(wine: Wine, schema: WineSchemaField[]): void {
     const next: Record<string, string | string[]> = {};
     for (const f of schema) {
       const raw = wine[f.field];
@@ -280,6 +355,7 @@ export class WineEditorComponent {
    * werden typkonvertiert (Req 17.22).
    */
   onInput(field: EditorField, raw: string): void {
+    if (this.loading()) return;
     this.values.update((v) => ({ ...v, [field.schema.field]: raw }));
     // Im Entwurfsmodus nur lokal halten — es gibt noch keine JSON (wird beim Namen angelegt).
     if (this.isDraft()) return;
@@ -358,6 +434,7 @@ export class WineEditorComponent {
 
   /** Fügt einen Grape-Tag hinzu (Req 17.18) und speichert das Array sofort. */
   addChip(field: string, raw: string): void {
+    if (this.loading()) return;
     const tag = raw.trim();
     if (tag === '') return;
     const current = this.chips(field);
@@ -370,6 +447,7 @@ export class WineEditorComponent {
 
   /** Entfernt einen Grape-Tag (Req 17.18). */
   removeChip(field: string, tag: string): void {
+    if (this.loading()) return;
     const next = this.chips(field).filter((t) => t !== tag);
     this.values.update((v) => ({ ...v, [field]: next }));
     if (this.isDraft()) return;
@@ -404,6 +482,7 @@ export class WineEditorComponent {
 
   /** Übernimmt den Dateinamen der ausgewählten Mediendatei in das Feld (Req 17.19/17.35). */
   pickMedia(field: string, entry: MediaEntry): void {
+    if (this.loading()) return;
     this.values.update((v) => ({ ...v, [field]: entry.name }));
     if (this.isDraft()) return;
     this.save.scheduleFieldSave(field, entry.name);
@@ -411,6 +490,7 @@ export class WineEditorComponent {
 
   /** Entfernt die Medien-Zuordnung eines Feldes. */
   clearMedia(field: string): void {
+    if (this.loading()) return;
     this.values.update((v) => ({ ...v, [field]: '' }));
     if (this.isDraft()) return;
     this.save.scheduleFieldSave(field, null);
@@ -443,6 +523,7 @@ export class WineEditorComponent {
    * (Req 17.34/17.35).
    */
   pickImage(name: string): void {
+    if (this.loading()) return;
     this.values.update((v) => ({ ...v, image: name }));
     if (this.isDraft()) return;
     this.save.scheduleFieldSave('image', name);
@@ -450,6 +531,7 @@ export class WineEditorComponent {
 
   /** Entfernt die Bild-Zuordnung des `image`-Feldes. */
   clearImage(): void {
+    if (this.loading()) return;
     this.values.update((v) => ({ ...v, image: '' }));
     if (this.isDraft()) return;
     this.save.scheduleFieldSave('image', null);
@@ -506,6 +588,7 @@ export class WineEditorComponent {
 
   /** Überschreibt die extern veränderte Datei nach Benutzerbestätigung (Req 17.25). */
   async confirmOverwrite(): Promise<void> {
+    if (this.loading()) return;
     await this.save.confirmOverwrite(this.currentFieldValues());
   }
 
@@ -540,4 +623,12 @@ export class WineEditorComponent {
     if (!item || item.kind !== 'unknown') return;
     await this.state.archiveImage(item.image);
   }
+}
+
+/** Lesbare Ursache, warum ein Eintrag beim Öffnen nicht gelesen werden konnte. */
+function describeLoadError(err: unknown): string {
+  const name = (err as { name?: string } | null)?.name;
+  if (name === 'NotFoundError') return 'Die Datei wurde nicht gefunden (verschoben, umbenannt oder entfernt).';
+  if (err instanceof SyntaxError) return 'Die Datei enthält kein gültiges JSON.';
+  return 'Die Datei konnte nicht gelesen werden.';
 }

@@ -11,6 +11,18 @@
       Die JSON-Datei konnte nicht gelesen werden und ist nicht bearbeitbar.
     </p>
     <p class="wine-editor__file">Datei: {{ item.entry.path }}</p>
+  } @else if (loadError(); as loadErr) {
+    <!-- Lesefehler beim Öffnen: Warnung statt Formular, Speichern ist nicht möglich. -->
+    <header class="wine-editor__header">
+      <h2 class="wine-editor__title wine-editor__title--placeholder">Eintrag nicht lesbar</h2>
+    </header>
+    <div class="wine-editor__status wine-editor__status--error" role="alert" data-testid="load-error">
+      {{ loadErr }} Bitte oben auf „Aktualisieren“ klicken, um die Liste neu einzulesen. Dieser
+      Eintrag kann nicht gespeichert werden.
+    </div>
+    @if (item.kind === 'created') {
+      <p class="wine-editor__file">Datei: {{ item.entry.path }}</p>
+    }
   } @else {
     <!-- Editierbares Formular: gültiger angelegter Eintrag ODER Entwurf (unbekannter
          Wein, noch keine JSON). Der Entwurf zeigt dasselbe vollständige Formular; es wird
@@ -116,7 +128,11 @@
       </div>
     }
 
-    <form class="wine-editor__form" (submit)="$event.preventDefault()">
+    <form
+      class="wine-editor__form"
+      [attr.aria-busy]="loading() ? 'true' : null"
+      (submit)="$event.preventDefault()"
+    >
       @for (field of fields(); track field.schema.field) {
         <div class="wine-editor__field" [attr.data-field]="field.schema.field">
           <label class="wine-editor__label" [attr.for]="'wine-editor-' + field.schema.field">
@@ -131,6 +147,7 @@
                 type="date"
                 [value]="value(field.schema.field)"
                 [disabled]="isFieldLocked(field.schema.field)"
+                [readonly]="loading()"
                 (input)="onInput(field, $any($event.target).value)"
               />
             }
@@ -145,6 +162,7 @@
                 step="0.1"
                 [value]="value(field.schema.field)"
                 [disabled]="isFieldLocked(field.schema.field)"
+                [readonly]="loading()"
                 (input)="onInput(field, $any($event.target).value)"
               />
             }
@@ -157,6 +175,7 @@
                 inputmode="decimal"
                 [value]="value(field.schema.field)"
                 [disabled]="isFieldLocked(field.schema.field)"
+                [readonly]="loading()"
                 (input)="onInput(field, $any($event.target).value)"
               />
             }
@@ -170,6 +189,7 @@
                     <button
                       type="button"
                       class="wine-editor__chip-remove"
+                      [disabled]="loading()"
                       (click)="removeChip(field.schema.field, tag)"
                       [attr.aria-label]="'Entfernen: ' + tag"
                     >
@@ -182,6 +202,7 @@
                   type="text"
                   [attr.list]="listId(field.schema.field)"
                   [disabled]="isFieldLocked(field.schema.field)"
+                [readonly]="loading()"
                   placeholder="Rebsorte hinzufügen …"
                   (keydown.enter)="
                     addChip(field.schema.field, $any($event.target).value);
@@ -209,6 +230,7 @@
                 [attr.list]="listId(field.schema.field)"
                 [value]="value(field.schema.field)"
                 [disabled]="isFieldLocked(field.schema.field)"
+                [readonly]="loading()"
                 (input)="onInput(field, $any($event.target).value)"
               />
               <datalist [id]="listId(field.schema.field)">
@@ -232,7 +254,7 @@
                   <button
                     type="button"
                     class="wine-editor__image-open"
-                    [disabled]="isFieldLocked(field.schema.field)"
+                    [disabled]="isFieldLocked(field.schema.field) || loading()"
                     (click)="openImagePicker()"
                     data-testid="image-open-picker"
                   >
@@ -243,7 +265,12 @@
                     }
                   </button>
                   @if (isPresent(value(field.schema.field))) {
-                    <button type="button" (click)="clearImage()" data-testid="image-clear">
+                    <button
+                      type="button"
+                      [disabled]="loading()"
+                      (click)="clearImage()"
+                      data-testid="image-clear"
+                    >
                       Entfernen
                     </button>
                   }
@@ -263,14 +290,16 @@
                 />
                 <button
                   type="button"
-                  [disabled]="isFieldLocked(field.schema.field)"
+                  [disabled]="isFieldLocked(field.schema.field) || loading()"
                   (click)="loadMedia(field.mediaKind!)"
                   [attr.data-testid]="'media-load-' + field.schema.field"
                 >
                   Dateien anzeigen
                 </button>
                 @if (isPresent(value(field.schema.field))) {
-                  <button type="button" (click)="clearMedia(field.schema.field)">Entfernen</button>
+                  <button type="button" [disabled]="loading()" (click)="clearMedia(field.schema.field)">
+                    Entfernen
+                  </button>
                 }
                 @let files = field.mediaKind === 'audio' ? audioFiles() : videoFiles();
                 @if (files.length > 0) {
@@ -346,6 +375,7 @@
                   [attr.list]="listId(field.schema.field)"
                   [value]="value(field.schema.field)"
                   [disabled]="isFieldLocked(field.schema.field)"
+                [readonly]="loading()"
                   (input)="onInput(field, $any($event.target).value)"
                 />
                 @if (field.suggestions.length > 0) {
@@ -394,7 +424,12 @@
 
       <!-- Eintrag archivieren (kein Löschen, Req 17.44/17.47) -->
       <div class="wine-editor__archive">
-        <button type="button" (click)="archiveEntry()" data-testid="archive-entry">
+        <button
+          type="button"
+          [disabled]="loading()"
+          (click)="archiveEntry()"
+          data-testid="archive-entry"
+        >
           Eintrag archivieren
         </button>
         <p class="wine-editor__note">
