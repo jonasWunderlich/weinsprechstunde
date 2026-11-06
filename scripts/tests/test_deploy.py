@@ -4,6 +4,7 @@ import pytest
 
 from conftest import make_config
 from conftest import weinimport as wi
+from weinlib import deploy
 from weinlib import ftp_transport as ft
 
 
@@ -43,7 +44,7 @@ def test_connection_failure_exits_with_req_6_12_message(monkeypatch, capsys):
     def boom(*a, **k):
         raise OSError("name resolution failed")
 
-    monkeypatch.setattr(wi, "_deploy_ftp", boom)
+    monkeypatch.setattr(deploy, "_deploy_ftp", boom)
     with pytest.raises(SystemExit) as exc:
         wi.phase_deploy(config)
     assert exc.value.code == 1
