@@ -1,6 +1,7 @@
 """Gemeinsame Test-Fixtures und Helfer für die weinimport-Testsuite."""
 
 import importlib.util
+import itertools
 import json
 import sys
 from pathlib import Path
@@ -81,3 +82,15 @@ def make_jpeg(path: Path, size=(200, 100), exif_date: str | None = None) -> None
         img.save(path, format="JPEG", exif=exif_bytes)
     else:
         img.save(path, format="JPEG")
+
+
+# hypothesis ruft die Testfunktion mehrfach mit demselben function-scoped
+# tmp_path auf. Für Phasen, die Dateien schreiben/umbenennen, braucht jede
+# Iteration einen frischen Ordner, sonst leaken Dateien zwischen den Beispielen.
+_counter = itertools.count()
+
+
+def fresh_dir(tmp_path, name="import"):
+    d = tmp_path / f"{name}_{next(_counter)}"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
