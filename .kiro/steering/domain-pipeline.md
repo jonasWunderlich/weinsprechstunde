@@ -5,7 +5,7 @@ inclusion: auto
 ---
 # Domäne pipeline
 
-Scope: `import/`, `export/`, `scripts/weinlib/{config,pipeline,backup}.py` (Phasen backup, optimize-images, prepare, export, image-export; nicht deploy; `scripts/weinimport.py` ist nur die Fassade/Einstieg), `backup/`, `wine-schema.json`, Tests in `scripts/tests/`. Backup gehört zur Pipeline: läuft im Vollpipeline-Lauf (`cli._run_full_pipeline`) vor dem JSON-Export und sichert die bisherige `wines.json` (Req 20). Für `export` allein (make export/all/deploy, CI) ist das Backup nicht garantiert (offene Entscheidung). Nicht lesen: editor, weinliste, shared, deploy-ftp (auch nicht `deploy.py`, `ftp_transport.py`, `cli.py`).
+Scope: `import/`, `export/`, `scripts/weinlib/{config,pipeline,backup}.py` (Phasen backup, optimize-images, prepare, export, image-export; nicht deploy; `scripts/weinimport.py` ist nur die Fassade/Einstieg), `backup/`, `wine-schema.json`, Tests in `scripts/tests/`. Backup gehört zur Pipeline: ist eine eigene, von den übrigen Phasen unabhängige Phase `backup` (Req 20): sie läuft als allererster Schritt von `make deploy` (`make backup`) und im Vollpipeline-Lauf (`cli._run_full_pipeline`) und sichert die vorhandene `export/data/wines.json`; fehlt sie, nur Warnung. `make export`/`make all` und die CI rufen sie nicht auf. Nicht lesen: editor, weinliste, shared, deploy-ftp (auch nicht `deploy.py`, `ftp_transport.py`, `cli.py`).
 
 ## Verträge
 - #[[file:.kiro/specs/contracts/import-format.md]]

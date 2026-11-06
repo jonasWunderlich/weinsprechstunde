@@ -93,7 +93,7 @@ Verträge:
 
 ### Requirement 20: Sicherheitskopien der exportierten wines.json
 
-20.1 Mit `backup`-Objekt: vor jeder Pipeline-Ausführung (vor `prepare`) ein Last-Backup.
+20.1 Mit `backup`-Objekt: vor jeder Pipeline-Ausführung (vor `prepare`) ein Last-Backup. `make deploy` führt `backup` als allerersten Schritt aus, unabhängig von den übrigen Phasen (Phase `backup`, auch einzeln aufrufbar: `make backup`).
 20.2 Last-Backup = Kopie der einzelnen Datei `export_path` nach `backup.backup_dir` als `last_YYYY-MM-DD_HH-MM-SS.json` (nicht Import-Ordner, kein Unterordner).
 20.3 Mehr als `max_last_backups` `last_`-Dateien → älteste löschen (genau `max_last_backups` bleiben). `.last_archival` zählt nicht als Backup.
 20.4 Vor jeder Pipeline-Ausführung prüfen, ob seit dem letzten Archival-Backup ≥ `archival_interval_days` Tage vergangen sind.

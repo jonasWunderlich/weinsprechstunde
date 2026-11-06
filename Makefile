@@ -16,8 +16,11 @@ PYTHON ?= $(shell [ -x .venv/bin/python ] && echo .venv/bin/python || command -v
 FORCE_IMAGES ?=
 DEPLOY_FLAGS := $(if $(FORCE_IMAGES),--force-images,)
 
-.PHONY: optimize-images prepare export image-export deploy all
+.PHONY: backup optimize-images prepare export image-export deploy all
 
+## backup: Backup der exportierten wines.json (Req 20); ohne Datei nur Warnung
+backup:
+	$(PYTHON) scripts/weinimport.py backup
 ## optimize-images: Originalbilder im Import-Ordner auf max. Höhe skalieren (in-place)
 optimize-images:
 	$(PYTHON) scripts/weinimport.py optimize-images
@@ -42,7 +45,9 @@ all: optimize-images prepare export image-export
 ## Weinliste (frontend/dist/weinliste/browser/) UND die statische Editor-App
 ## (frontend/dist/editor/browser/); die Deploy-Phase lädt beide hoch – den
 ## Editor in seinen eigenen Remote-Unterordner (deploy.remote_editor_path).
-deploy: optimize-images prepare export image-export
+## Das Backup (backup) ist der allererste Schritt und unabhängig von den übrigen:
+## existiert export/data/wines.json, wird sie vor allem anderen gesichert.
+deploy: backup optimize-images prepare export image-export
 	cd frontend && npm run build
 	cd frontend && npm run build:editor
 	$(PYTHON) scripts/weinimport.py deploy $(DEPLOY_FLAGS)

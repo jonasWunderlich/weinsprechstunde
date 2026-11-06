@@ -9,7 +9,8 @@ Makefile und `.github/workflows/deploy.yml` rufen nur die Domänen-Kommandos auf
 ## Makefile
 - `optimize-images`, `prepare`, `export`, `image-export`: je `python scripts/weinimport.py <phase>` (Pipeline).
 - `all`: optimize-images -> prepare -> export -> image-export (ohne deploy).
-- `deploy`: `all`, dann `npm run build` und `npm run build:editor` (in `frontend/`), dann `weinimport.py deploy` (deploy-ftp). `FORCE_IMAGES=1` reicht `--force-images` durch.
+- `backup`: `weinimport.py backup` (Pipeline, Req 20).
+- `deploy`: zuerst `backup` (allererster Schritt, unabhängig), dann optimize-images, prepare, export, image-export, dann `npm run build` und `npm run build:editor` (in `frontend/`), dann `weinimport.py deploy` (deploy-ftp). `FORCE_IMAGES=1` reicht `--force-images` durch.
 - `PYTHON` überschreibbar (Default: `.venv/bin/python`, sonst `python3`).
 
 ## `.github/workflows/deploy.yml` (Push auf main)
