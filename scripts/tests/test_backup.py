@@ -11,6 +11,7 @@ import pytest
 
 from conftest import make_config, write_json
 from conftest import weinimport as wi
+from weinlib import backup as backup_mod
 from weinlib import ftp_transport as ft
 
 
@@ -44,7 +45,7 @@ class FrozenDatetime(datetime):
 
 def run_backup_at(monkeypatch, config, moment):
     FrozenDatetime._now = moment
-    monkeypatch.setattr(wi, "datetime", FrozenDatetime)
+    monkeypatch.setattr(backup_mod, "datetime", FrozenDatetime)
     wi.phase_backup(config)
 
 
@@ -153,7 +154,7 @@ def test_backup_skipped_when_export_missing(tmp_path, monkeypatch, capsys):
     backup_dir = tmp_path / "backup"
 
     FrozenDatetime._now = datetime(2024, 1, 1, 12, 0, 0)
-    monkeypatch.setattr(wi, "datetime", FrozenDatetime)
+    monkeypatch.setattr(backup_mod, "datetime", FrozenDatetime)
     wi.phase_backup(config)
 
     assert "übersprungen" in capsys.readouterr().err
@@ -168,9 +169,9 @@ def test_backup_failure_warns_no_abort(tmp_path, monkeypatch, capsys):
     def boom(*a, **k):
         raise OSError("copy kaputt")
 
-    monkeypatch.setattr(wi.shutil, "copy2", boom)
+    monkeypatch.setattr(backup_mod.shutil, "copy2", boom)
     FrozenDatetime._now = datetime(2024, 1, 1, 12, 0, 0)
-    monkeypatch.setattr(wi, "datetime", FrozenDatetime)
+    monkeypatch.setattr(backup_mod, "datetime", FrozenDatetime)
     # Darf nicht abbrechen
     wi.phase_backup(config)
     assert "fehlgeschlagen" in capsys.readouterr().err

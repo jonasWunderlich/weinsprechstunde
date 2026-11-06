@@ -13,6 +13,7 @@ from hypothesis import strategies as st
 
 from conftest import default_schema, make_config, make_jpeg, write_json
 from conftest import weinimport as wi
+from weinlib import backup as backup_mod
 
 # hypothesis ruft die Testfunktion mehrfach mit demselben function-scoped
 # tmp_path auf. Für Phasen, die Dateien schreiben/umbenennen, braucht jede
@@ -400,7 +401,7 @@ def test_property_20_last_rolling_window(tmp_path, monkeypatch, max_last, runs):
     )
     config = make_config(import_dir=str(import_dir), backup=backup)
 
-    monkeypatch.setattr(wi, "datetime", _Frozen)
+    monkeypatch.setattr(backup_mod, "datetime", _Frozen)
     base = datetime(2024, 1, 1, 12, 0, 0)
     import datetime as _dt
 
@@ -433,7 +434,7 @@ def test_property_21_archival_interval_invariant(tmp_path, monkeypatch, interval
         remote_backup_dir=None,
     )
     config = make_config(import_dir=str(import_dir), backup=backup)
-    monkeypatch.setattr(wi, "datetime", _Frozen)
+    monkeypatch.setattr(backup_mod, "datetime", _Frozen)
 
     base = datetime(2024, 1, 1, 12, 0, 0)
     archival_times = []
