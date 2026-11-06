@@ -8,6 +8,8 @@ from pathlib import Path
 import pytest
 
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "weinimport.py"
+REPO_ROOT = SCRIPT_PATH.parents[1]
+FIXTURES = REPO_ROOT / ".kiro" / "specs" / "contracts" / "fixtures"
 
 
 def _load_weinimport():
@@ -56,7 +58,7 @@ def make_config(**overrides):
 
 def default_schema():
     """Das reale wine-schema.json als SchemaField-Liste."""
-    schema_path = SCRIPT_PATH.parents[1] / "wine-schema.json"
+    schema_path = REPO_ROOT / "wine-schema.json"
     raw = json.loads(schema_path.read_text(encoding="utf-8"))
     return [weinimport.SchemaField(**entry) for entry in raw]
 

@@ -5,13 +5,11 @@ prepare + export exakt die Fixture fixtures/export/wines.json ergeben.
 """
 import json
 import shutil
-from pathlib import Path
 
-from conftest import make_config
+from conftest import FIXTURES, REPO_ROOT, make_config
 from conftest import weinimport as wi
 
-SCHEMA = Path(__file__).resolve().parents[2] / "wine-schema.json"
-FIXTURES = Path(__file__).resolve().parents[2] / ".kiro" / "specs" / "contracts" / "fixtures"
+SCHEMA = REPO_ROOT / "wine-schema.json"
 
 
 def test_import_fixture_ergibt_export_fixture(tmp_path):
