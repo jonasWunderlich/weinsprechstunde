@@ -16,7 +16,7 @@ PYTHON ?= $(shell [ -x .venv/bin/python ] && echo .venv/bin/python || command -v
 FORCE_IMAGES ?=
 DEPLOY_FLAGS := $(if $(FORCE_IMAGES),--force-images,)
 
-.PHONY: backup optimize-images prepare export image-export deploy all
+.PHONY: backup optimize-images prepare export image-export deploy all test test-pipeline test-deploy test-config
 
 ## backup: Backup der exportierten wines.json (Req 20); ohne Datei nur Warnung
 backup:
@@ -51,3 +51,15 @@ deploy: backup optimize-images prepare export image-export
 	cd frontend && npm run build
 	cd frontend && npm run build:editor
 	$(PYTHON) scripts/weinimport.py deploy $(DEPLOY_FLAGS)
+## test: alle Python-Tests (scripts/tests)
+test:
+	$(PYTHON) -m pytest scripts/tests -q
+## test-pipeline: Tests der Pipeline inkl. Backup (scripts/tests/pipeline)
+test-pipeline:
+	$(PYTHON) -m pytest scripts/tests/pipeline -q
+## test-deploy: Tests des FTPS/SFTP-Deployments (scripts/tests/deploy_ftp)
+test-deploy:
+	$(PYTHON) -m pytest scripts/tests/deploy_ftp -q
+## test-config: Tests der Konfiguration (scripts/tests/config)
+test-config:
+	$(PYTHON) -m pytest scripts/tests/config -q
