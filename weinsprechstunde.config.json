@@ -1,5 +1,4 @@
 {
-  "import_dir": "./import",
   "import_source": "local",
   "export_path": "./export/data/wines.json",
   "scaffold_mode": true,
@@ -13,10 +12,10 @@
   },
   "deploy": {
     "protocol": "ftpes",
-    "remote_path": "/wine_app",
-    "remote_images_path": "/wine_app/images",
-    "remote_import_path": "/wine_app/data",
-    "remote_editor_path": "/wine_app/editor"
+    "remote_path": "/",
+    "remote_images_path": "/images",
+    "remote_import_path": "/data",
+    "remote_editor_path": "/edit"
   },
   "backup": {
     "backup_dir": "./backup",

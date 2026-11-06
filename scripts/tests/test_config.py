@@ -158,7 +158,6 @@ def _write_config(tmp_path, deploy_overrides=None):
     cfg_path.write_text(
         json.dumps(
             {
-                "import_dir": "./import",
                 "import_source": "local",
                 "export_path": "./export/data/wines.json",
                 "scaffold_mode": True,
@@ -260,3 +259,38 @@ def test_load_wine_schema_parses(tmp_path):
     assert [s.field for s in schema] == ["name", "price"]
     assert schema[1].filter_type is None
     assert wi.get_scaffold_fields(schema) == ["name", "price"]
+
+
+# --- import_dir-Auflösung (Config > Secrets-Datei > <Projektordner>/import) ---
+def test_import_dir_from_secrets_when_not_in_config(tmp_path, monkeypatch):
+    for k in ("HOST", "USER", "PASSWORD"):
+        monkeypatch.delenv(f"WEINSPRECHSTUNDE_DEPLOY_{k}", raising=False)
+    cfg_path = _write_config(tmp_path)
+    _write_secrets(tmp_path, {"import_dir": "/mein/import"})
+    assert wi.load_config(str(cfg_path)).import_dir == "/mein/import"
+
+
+def test_import_dir_defaults_to_project_import_folder(tmp_path, monkeypatch):
+    for k in ("HOST", "USER", "PASSWORD"):
+        monkeypatch.delenv(f"WEINSPRECHSTUNDE_DEPLOY_{k}", raising=False)
+    cfg_path = _write_config(tmp_path)
+    assert wi.load_config(str(cfg_path)).import_dir == str(tmp_path.resolve() / "import")
+
+
+def test_import_dir_empty_secret_falls_back_to_default(tmp_path, monkeypatch):
+    for k in ("HOST", "USER", "PASSWORD"):
+        monkeypatch.delenv(f"WEINSPRECHSTUNDE_DEPLOY_{k}", raising=False)
+    cfg_path = _write_config(tmp_path)
+    _write_secrets(tmp_path, {"import_dir": ""})
+    assert wi.load_config(str(cfg_path)).import_dir == str(tmp_path.resolve() / "import")
+
+
+def test_import_dir_config_takes_precedence_over_secrets(tmp_path, monkeypatch):
+    for k in ("HOST", "USER", "PASSWORD"):
+        monkeypatch.delenv(f"WEINSPRECHSTUNDE_DEPLOY_{k}", raising=False)
+    cfg_path = _write_config(tmp_path)
+    raw = json.loads(cfg_path.read_text(encoding="utf-8"))
+    raw["import_dir"] = "/aus/config"
+    cfg_path.write_text(json.dumps(raw), encoding="utf-8")
+    _write_secrets(tmp_path, {"import_dir": "/aus/secrets"})
+    assert wi.load_config(str(cfg_path)).import_dir == "/aus/config"

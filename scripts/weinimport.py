@@ -31,6 +31,7 @@ from typing import Any, Optional
 
 CONFIG_PATH = "weinsprechstunde.config.json"
 SECRETS_FILENAME = "weinsprechstunde.secrets.json"
+DEFAULT_IMPORT_DIRNAME = "import"
 SCHEMA_PATH = "wine-schema.json"
 LAST_ARCHIVAL_FILE = ".last_archival"
 
@@ -163,7 +164,9 @@ def load_config(path: str = CONFIG_PATH) -> Config:
     # Secrets-Auflösung: strikt Config > Secrets-Datei > Env.
     # 1) Optionale Secrets-Datei neben der Config lesen; fehlende Datei ist
     #    KEIN Fehler. Werte nur einspielen, wenn das Config-Feld leer ist.
-    secrets_path = Path(path).resolve().parent / SECRETS_FILENAME
+    project_dir = Path(path).resolve().parent
+    secrets: dict = {}
+    secrets_path = project_dir / SECRETS_FILENAME
     if secrets_path.exists():
         try:
             secrets = json.loads(secrets_path.read_text(encoding="utf-8"))
@@ -183,8 +186,16 @@ def load_config(path: str = CONFIG_PATH) -> Config:
     if not deploy.user:
         deploy.user = os.environ.get("WEINSPRECHSTUNDE_DEPLOY_USER", "")
 
+    # import_dir: Config > Secrets-Datei > Standard "<Projektordner>/import".
+    # Leere Werte (""/fehlend) zählen als nicht gesetzt.
+    import_dir = (
+        raw.get("import_dir")
+        or secrets.get("import_dir")
+        or str(project_dir / DEFAULT_IMPORT_DIRNAME)
+    )
+
     return Config(
-        import_dir=raw["import_dir"],
+        import_dir=import_dir,
         import_source=raw["import_source"],
         export_path=raw["export_path"],
         scaffold_mode=raw["scaffold_mode"],
